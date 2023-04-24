@@ -15,19 +15,19 @@ def _init_pca(Y, latent_dim):
     return torch.nn.Parameter(torch.matmul(Y, V[:,:latent_dim]))
 
 class BayesianGPLVM(ApproximateGP):
-    def __init__(self, X, variational_strategy):
+    def __init__(self, Z, variational_strategy):
         
         """The GPLVM model class for unsupervised learning. The current class supports
         
-        (a) Point estimates for latent X when prior_x = None 
-        (b) MAP Inference for X when prior_x is not None and inference == 'map'
-        (c) Gaussian variational distribution q(X) when prior_x is not None and inference == 'variational'
+        (a) Point estimates for latent Z when prior_z = None 
+        (b) MAP Inference for Z when prior_z is not None and inference == 'map'
+        (c) Gaussian variational distribution q(Z) when prior_z is not None and inference == 'variational'
 
-        :param X (LatentVariable): An instance of a sub-class of the LatentVariable class.
+        :param Z (LatentVariable): An instance of a sub-class of the LatentVariable class.
                                     One of,
                                     PointLatentVariable / 
                                     MAPLatentVariable / 
-                                    VariationalLatentVariable to
+                                    GaussianLatentVariable to
                                     facilitate inference with (a), (b) or (c) respectively.
        
         """
@@ -35,85 +35,81 @@ class BayesianGPLVM(ApproximateGP):
         super(BayesianGPLVM, self).__init__(variational_strategy)
         
         # Assigning Latent Variable 
-        self.X = X 
+        self.Z = Z
     
     def forward(self):
         raise NotImplementedError
           
     def sample_latent_variable(self, *args, **kwargs):
-        sample = self.X(*args, **kwargs)
+        sample = self.Z(*args, **kwargs)
         return sample
     
-    def initialise_model_test(self, Y_test, model_name, seed, prior_x=None, pca=True):
+    def initialise_model_test(self, Y_test, model_name, seed, prior_z=None):
         
         if model_name == 'gauss': # deepcopy wont work
             test_model = pkl.loads(pkl.dumps(self)) 
             assert id(test_model) != id(self)
             assert test_model.covar_module.base_kernel.lengthscale[0][0] == self.covar_module.base_kernel.lengthscale[0][0]
+        
         else:
             test_model = deepcopy(self) # A says better to re-initialise
         # self is in eval mode - but test_model needs to be in train_mode
-        if torch.cuda.is_available():
-            test_model = test_model.cuda()
-            test_model.train()
-        else:
+        #if torch.cuda.is_available():
+        #    test_model = test_model.cuda()
+        #    test_model.train()
+        #else:
             test_model.train()
         test_model.n = len(Y_test)
-        latent_dim = self.X.latent_dim #q
+        latent_dim = self.Z.latent_dim #q
         
-        # reset the variational latent variable - A says be careful about random seed
-        # Initialise X with PCA or 0s.
-        if pca == True:
-             X_init = _init_pca(Y_test, latent_dim) # Initialise X to PCA 
-        else:
-             X_init = torch.nn.Parameter(torch.randn(test_model.n, latent_dim))
+        # reset the latent variable - A says be careful about random seed
+        # Initialise Z with PCA or 0s.
+  
+        Z_init = torch.nn.Parameter(torch.randn(test_model.n, latent_dim))
         
-        kwargs = {'X_init_test': X_init}
-        if prior_x is not None:
-            kwargs['prior_x_test'] = prior_x
-        if hasattr(test_model.X, 'data_dim'):
+        kwargs = {'Z_init_test': Z_init}
+        
+        if prior_z is not None:
+            kwargs['prior_z_test'] = prior_z
+            
+        if hasattr(test_model.Z, 'data_dim'):
             kwargs['data_dim'] = Y_test.shape[1]
 
-        test_model.X.reset(**kwargs)
+        test_model.Z.reset(**kwargs)
         
-        # freeze gradients for everything except X related
+        # freeze gradients for everything except Z
         #for name, parameter in test_model.named_parameters():
-        #   if (name.startswith('X') is False):
+        #   if (name.startswith('Z') is False):
         #       parameter.requires_grad = False
         
         return test_model
     
-    def predict_latent(self, Y_train, Y_test, lr, likelihood, seed, prior_x=None, ae=True, model_name='nn_gauss', pca=True, steps=5000):
+    def predict_latent(self, Y_train, Y_test, lr, likelihood, seed, prior_z=None, ae=True, model_name='nn_gauss', steps=5000):
         
         if ae is True: # A says make into a LatentVariable attribute
-           
-             if model_name == 'iaf':
-                # encode to obtain flow means
-                flow_mu = self.X.get_latent_flow_means(Y_test)
-                flow_samples = self.X.get_latent_flow_samples(Y_test)
-                return flow_mu, flow_samples
-             else:
-                # nn-gauss
-                mu_star = self.X.mu(Y_test)
-                sigma_star = self.X.sigma(Y_test)
-                return mu_star, sigma_star # A says change return to match flow_samples
+
+            # nn-gauss
+            mu_star = self.Z.mu(Y_test)
+            sigma_star = self.Z.sigma(Y_test)
+            return mu_star, sigma_star 
             
         else:
-            # Train for test X variational params
+            # Train for test Z variational params
             
             # The idea here is to initialise a new test model but import all the trained 
-            # params from the training model. The variational params of the training data dont affect 
+            # params from the training model. The variational params of the training data 
             # do not affect the test data.
             
             # Initialise test model at training params
-            test_model = self.initialise_model_test(Y_test, model_name, seed, prior_x=prior_x, pca=pca)
+            
+            test_model = self.initialise_model_test(Y_test, model_name, seed, prior_z=prior_z)
             
             # Initialise fresh test optimizer 
-            optimizer = torch.optim.Adam(test_model.X.parameters(), lr=lr)
+            optimizer = torch.optim.Adam(test_model.Z.parameters(), lr=lr)
             elbo = VariationalELBO(likelihood, test_model, num_data=len(Y_test))
             
             print('---------------Learning variational parameters for test ------------------')
-            for name, param in test_model.X.named_parameters():
+            for name, param in test_model.Z.named_parameters():
                 print(name)
                 
             loss_list = []
@@ -124,7 +120,7 @@ class BayesianGPLVM(ApproximateGP):
                 optimizer.zero_grad()
                 sample = test_model.sample_latent_variable()  # a full sample returns latent x across all N
                 sample_batch = sample[batch_index]
-                sample_batch = sample_batch.cuda() if torch.cuda.is_available() else sample_batch
+                sample_batch = sample_batch   #.cuda() #if torch.cuda.is_available() else sample_batch
                 sample_batch.requires_grad_(True)
                 
                 output_batch = test_model(sample_batch)
@@ -135,28 +131,21 @@ class BayesianGPLVM(ApproximateGP):
                 loss.backward()
                 optimizer.step()
                 
-            return loss_list, test_model.X
+            return loss_list, test_model.Z
         
-    def reconstruct_y(self, X, Y, ae=True, model_name='nn_gauss'):
+    def reconstruct_y(self, Z, Y, ae=False):
         
         if ae is True:
-            # encoder based model -> to reconstruct encoder first, then decode
-            if model_name == 'iaf':
-                # encode to obtain flow means
-                flow_mu = self.X.get_latent_flow_means(Y)
-                # then decode flow means to produce y_pred
-                y_pred = self(flow_mu)
-            else:
-                y_pred = self(self.X.mu(Y))
-
+            # encoder based model -> to reconstruct encode first, then decode
+            y_pred = self(self.Z.mu(Y))
             y_pred_mean = y_pred.loc.detach()
             y_pred_covar = y_pred.covariance_matrix.detach()
             return y_pred_mean, y_pred_covar
     
         else:
-            # Just decode from the X that is passed
+            # Just decode from the Z that is passed
             # Returns a batch of multivariate-normals 
-            y_pred = self(X)
+            y_pred = self(Z)
             return y_pred.loc, y_pred.covariance_matrix
 
     def get_trainable_param_names(self):
@@ -174,33 +163,33 @@ class BayesianGPLVM(ApproximateGP):
         print(table)
         print(f"Total Trainable Params: {total_params}")
         
-    def get_X_mean(self, Y):
+    def get_Z_mean(self, Y):
          
-         if self.X.__class__.__name__ in ('PointLatentVariable', 'MAPLatentVariable'):
+         if self.Z.__class__.__name__ in ('PointLatentVariable', 'MAPLatentVariable'):
              
-             return self.X.X.detach()
+             return self.Z.Z.detach()
          
-         elif self.X.__class__.__name__ == 'VariationalLatentVariable':
+         elif self.Z.__class__.__name__ == 'GaussianLatentVariable':
              
-             return self.X.q_mu.detach()
+             return self.Z.q_mu.detach()
          
-         elif self.X.__class__.__name__ == 'NNEncoder':
+         elif self.Z.__class__.__name__ == 'NNEncoder':
              
-             return self.X.mu(Y).detach()
+             return self.Z.mu(Y).detach()
     
-    def get_X_scales(self, Y):
+    def get_Z_scales(self, Y):
      
-         if self.X.__class__.__name__ in ('PointLatentVariable', 'MAPLatentVariable'):
+         if self.Z.__class__.__name__ in ('PointLatentVariable', 'MAPLatentVariable'):
              
              return None
          
-         elif self.X.__class__.__name__ == 'VariationalLatentVariable':
+         elif self.Z.__class__.__name__ == 'VariationalLatentVariable':
              
-             return torch.nn.functional.softplus(self.X.q_log_sigma).detach()
+             return torch.nn.functional.softplus(self.Z.q_log_sigma).detach()
          
-         elif self.X.__class__.__name__ == 'NNEncoder':
+         elif self.Z.__class__.__name__ == 'NNEncoder':
              
-             return np.array([torch.sqrt(x.diag()) for x in self.X.sigma(Y).detach()])
+             return np.array([torch.sqrt(x.diag()) for x in self.Z.sigma(Y).detach()])
          
     def store(self, losses, likelihood):
         

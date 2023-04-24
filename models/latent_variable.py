@@ -24,50 +24,50 @@ class LatentVariable(gpytorch.Module):
         self.n = n
         self.latent_dim = dim
         
-    def forward(self, x):
+    def forward(self, z):
         raise NotImplementedError
         
     def reset(self):
          raise NotImplementedError
         
 class PointLatentVariable(LatentVariable):
-    def __init__(self, X_init):
-        n, latent_dim = X_init.shape
+    def __init__(self, Z_init):
+        n, latent_dim = Z_init.shape
         super().__init__(n, latent_dim)
-        self.register_parameter('X', X_init)
+        self.register_parameter('Z', Z_init)
 
     def forward(self):
-        return self.X
+        return self.Z
     
-    def reset(self, X_init_test):
-        self.__init__(X_init_test)
+    def reset(self, Z_init_test):
+        self.__init__(Z_init_test)
         
 class MAPLatentVariable(LatentVariable):
     
-    def __init__(self, X_init, prior_x):
-        n, latent_dim = X_init.shape
+    def __init__(self, Z_init, prior_z):
+        n, latent_dim = Z_init.shape
         super().__init__(n, latent_dim)
-        self.prior_x = prior_x
-        self.register_parameter('X', X_init)
-        self.register_prior('prior_x', prior_x, 'X')
+        self.prior_z = prior_z
+        self.register_parameter('Z', Z_init)
+        self.register_prior('prior_z', prior_z, 'Z')
 
     def forward(self):
-        return self.X
+        return self.Z
     
-    def reset(self, X_init_test, prior_x_test):
-        self.__init__(X_init_test, prior_x_test)
+    def reset(self, Z_init_test, prior_z_test):
+        self.__init__(Z_init_test, prior_z_test)
 
 class kl_gaussian_loss_term(AddedLossTerm):
     
-    def __init__(self, q_x, p_x, n, data_dim):
-        self.q_x = q_x
-        self.p_x = p_x
+    def __init__(self, q_z, p_z, n, data_dim):
+        self.q_z = q_z
+        self.p_z = p_z
         self.n = n
         self.data_dim = data_dim
         
     def loss(self): 
         # G 
-        kl_per_latent_dim = kl_divergence(self.q_x, self.p_x).sum(axis=0) # vector of size latent_dim
+        kl_per_latent_dim = kl_divergence(self.q_z, self.p_z).sum(axis=0) # vector of size latent_dim
         kl_per_point = kl_per_latent_dim.sum()/self.n # scalar
         # inside the forward method of variational ELBO, 
         # the added loss terms are expanded (using add_) to take the same 
@@ -77,19 +77,19 @@ class kl_gaussian_loss_term(AddedLossTerm):
         return (kl_per_point/self.data_dim)
     
 
-class VariationalLatentVariable(LatentVariable):
+class GaussianLatentVariable(LatentVariable):
     
-    def __init__(self, X_init, prior_x, data_dim):
-        n, latent_dim = X_init.shape
+    def __init__(self, Z_init, prior_z, data_dim):
+        n, latent_dim = Z_init.shape
         super().__init__(n, latent_dim)
         
         self.data_dim = data_dim
-        self.prior_x = prior_x
-        # G: there might be some issues here if someone calls .cuda() on their BayesianGPLVM
+        self.prior_z = prior_z
+        # Note: there might be some issues here if someone calls .cuda() on their BayesianGPLVM
         # after initializing on the CPU
 
         # Local variational params per latent point with dimensionality latent_dim
-        self.q_mu = torch.nn.Parameter(X_init)
+        self.q_mu = torch.nn.Parameter(Z_init)
         self.q_log_sigma = torch.nn.Parameter(torch.randn(n, latent_dim))     
         # This will add the KL divergence KL(q(X) || p(X)) to the loss
         self.register_added_loss_term("x_kl")
@@ -102,13 +102,13 @@ class VariationalLatentVariable(LatentVariable):
         q_mu_batch = self.q_mu[batch_idx, ...]
         q_log_sigma_batch = self.q_log_sigma[batch_idx, ...]
 
-        q_x = torch.distributions.Normal(q_mu_batch, q_log_sigma_batch.exp())
+        q_z = torch.distributions.Normal(q_mu_batch, q_log_sigma_batch.exp())
 
-        self.prior_x.loc = self.prior_x.loc[:len(batch_idx), ...]
-        self.prior_x.scale = self.prior_x.scale[:len(batch_idx), ...]
-        x_kl = kl_gaussian_loss_term(q_x, self.prior_x, len(batch_idx), self.data_dim)        
-        self.update_added_loss_term('x_kl', x_kl)
-        return q_x.rsample()
+        self.prior_z.loc = self.prior_z.loc[:len(batch_idx), ...]
+        self.prior_z.scale = self.prior_z.scale[:len(batch_idx), ...]
+        z_kl = kl_gaussian_loss_term(q_z, self.prior_z, len(batch_idx), self.data_dim)        
+        self.update_added_loss_term('z_kl', z_kl)
+        return q_z.rsample()
     
-    def reset(self, X_init_test, prior_x_test, data_dim):
-        self.__init__(X_init_test, prior_x_test, data_dim)
+    def reset(self, Z_init_test, prior_z_test, data_dim):
+        self.__init__(Z_init_test, prior_z_test, data_dim)

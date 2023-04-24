@@ -30,37 +30,37 @@ class GaussianLikelihoodWithMissingObs(GaussianLikelihood):
         return res * ~missing_idx
     
 
-if __name__ == '__main__':
+# if __name__ == '__main__':
 
-    import torch
-    import numpy as np
-    from tqdm import trange
-    from gpytorch.distributions import MultivariateNormal
-    from gpytorch.constraints import Interval
-    torch.manual_seed(42)
+#     import torch
+#     import numpy as np
+#     from tqdm import trange
+#     from gpytorch.distributions import MultivariateNormal
+#     from gpytorch.constraints import Interval
+#     torch.manual_seed(42)
 
-    mu = torch.zeros(2, 3)
-    sigma = torch.tensor([[
-            [ 1,  1-1e-7, -1+1e-7],
-            [ 1-1e-7,  1, -1+1e-7],
-            [-1+1e-7, -1+1e-7,  1] ]]*2).float()
-    mvn = MultivariateNormal(mu, sigma)
-    x = mvn.sample_n(10000)
-    x[np.random.binomial(1, 0.5, size=x.shape).astype(bool)] = np.nan
-    x += np.random.normal(0, 0.5, size=x.shape)
+#     mu = torch.zeros(2, 3)
+#     sigma = torch.tensor([[
+#             [ 1,  1-1e-7, -1+1e-7],
+#             [ 1-1e-7,  1, -1+1e-7],
+#             [-1+1e-7, -1+1e-7,  1] ]]*2).float()
+#     mvn = MultivariateNormal(mu, sigma)
+#     x = mvn.sample_n(10000)
+#     x[np.random.binomial(1, 0.5, size=x.shape).astype(bool)] = np.nan
+#     x += np.random.normal(0, 0.5, size=x.shape)
 
-    LikelihoodOfChoice = GaussianLikelihoodWithMissingObs
-    likelihood = LikelihoodOfChoice(noise_constraint=Interval(1e-6, 2))
+#     LikelihoodOfChoice = GaussianLikelihoodWithMissingObs
+#     likelihood = LikelihoodOfChoice(noise_constraint=Interval(1e-6, 2))
 
-    opt = torch.optim.Adam(likelihood.parameters(), lr=0.5)
+#     opt = torch.optim.Adam(likelihood.parameters(), lr=0.5)
 
-    bar = trange(1000)
-    for _ in bar:
-        opt.zero_grad()
-        loss = -likelihood.log_marginal(x, mvn).sum()
-        loss.backward()
-        opt.step()
-        bar.set_description("nll: " + str(int(loss.data)))
-    print(likelihood.noise.sqrt()) # Test 1
+#     bar = trange(1000)
+#     for _ in bar:
+#         opt.zero_grad()
+#         loss = -likelihood.log_marginal(x, mvn).sum()
+#         loss.backward()
+#         opt.step()
+#         bar.set_description("nll: " + str(int(loss.data)))
+#     print(likelihood.noise.sqrt()) # Test 1
 
-    likelihood.expected_log_prob(x[0], mvn) == likelihood.log_marginal(x[0], mvn) # Test 2
+#    likelihood.expected_log_prob(x[0], mvn) == likelihood.log_marginal(x[0], mvn) # Test 2
