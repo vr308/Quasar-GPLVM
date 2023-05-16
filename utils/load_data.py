@@ -8,6 +8,9 @@ Loading the small base data for N = 30
 import pickle
 import numpy as np
 from astropy.io import fits
+
+# 1k dataset -> 'data/data_norm_sdss16_SNR10_random_1.fits'
+# 20k dataset -> 'data/data_HST_1220_5000_2A.pickle'
 # -------------------------------------------------------------------------------
 # load data
 # -------------------------------------------------------------------------------
@@ -16,7 +19,8 @@ f = open('data/data_HST_1220_5000_2A.pickle', 'rb')
 data, data_ivar = pickle.load(f)
 f.close()
 
-hdu = fits.open('data/data_norm_sdss16_SNR10_random_1.fits')  
+#hdu = fits.open('data/data_norm_sdss16_SNR10_all.fits')  
+hdu = fits.open('data/data_norm_sdss16_SNR10_random_1.fits')
 
 # -------------------------------------------------------------------------------
 # initialize parameters
@@ -29,7 +33,7 @@ def save_joint_spectra_labels_small():
         # remove one object for test set, rest as training set
         ind_test = np.zeros(data.shape[0], dtype = bool)
         ind_test[qq] = True
-        ind_train = ~ind_test 
+        ind_train = ~ind_test
     
         # -------------------------------------------------------------------------------
         # re-scale all input data to be Gaussian with zero mean and unit variance
@@ -67,7 +71,7 @@ def load_joint_spectra_labels_small():
        data = np.loadtxt(fname='data/small_quasar.csv', dtype=float, delimiter=',')
        return data
 
-def load_spectra_labels_large():
+def load_spectra_labels(hdu):
     
     issues = hdu[4].data
     wave = hdu[0].data  
@@ -81,9 +85,9 @@ def load_spectra_labels_large():
     # set missing values to NaN
     X[masks == 0.] = np.nan
     
-    # full data set will have 23085 quasars (or ~80000), only 1000 now
-    X = X[:1000, :]
-    Y = Y[:1000, :]
+    # # full data set will have 23085 quasars (or ~80000), only 1000 now
+    # X = X#[:1000, :]
+    # Y = Y#[:1000, :]
     
     means_X = np.nanmean(X, axis = 0)
     means_Y = np.nanmean(Y, axis = 0)
@@ -94,7 +98,8 @@ def load_spectra_labels_large():
     Y = (Y - means_Y) / std_Y
     
     return X, Y, means_X, std_X, means_Y, std_Y, snr
-    
-  
+
+
+
 
 

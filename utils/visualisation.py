@@ -34,8 +34,8 @@ def plot_partial_spectra_reconstruction_report(X_partial_recon_orig, X_train_ori
         plt.subplot(4,1,i+1)
         plt.plot(X_partial_recon_orig[i], c='b', alpha=0.5, label='Predicted mean')
         plt.plot(X_train_orig, c='r', linestyle='--', alpha=0.8, label='Ground truth')
-        lower = X_partial_recon_orig[i] - 1.96*X_partial_pred_sigma[i]
-        upper = X_partial_recon_orig[i] + 1.96*X_partial_pred_sigma[i]
+        lower = X_partial_recon_orig[i] - 3*X_partial_pred_sigma[i]
+        upper = X_partial_recon_orig[i] + 3*X_partial_pred_sigma[i]
         plt.axvspan(xmin=obs_regions[i][0], xmax=obs_regions[i][1], color='orange', alpha=0.3, label='Observed Region')
         plt.fill_between(np.arange(len(X_partial_recon_orig.T)), lower, upper, color='b', alpha=0.3, label=r'$\pm2\sigma$')
         plt.tight_layout()

@@ -8,6 +8,7 @@ Config for running experiments
 from pathlib import Path
 import torch 
 import gpytorch 
+from astropy.io import fits
 
 TORCH_VERSION = torch.__version__
 GPYTORCH_VERSION = gpytorch.__version__
@@ -22,5 +23,28 @@ RESULTS_DIR = BASE_PATH / "results"
 DATASET_DIR = BASE_PATH / "data"
 LOG_DIR = BASE_PATH / "logs"
 TRAINED_MODELS = BASE_PATH / "trained_models"
+
+### experimental config
+
+RANDOM_SEEDS = [34,52,61,70,97]
+
+size = '1k'  ## or '1k'
+
+if size == '20k':
+    
+    hdu = fits.open('data/data_norm_sdss16_SNR10_all.fits')
+    num_inducing = 250
+    latent_dim_q = 10
+    inference_mode = 'point' ## or 'map'
+    test_size = 2000
+    
+else:
+    
+    hdu = fits.open('data/data_norm_sdss16_SNR10_random_1.fits')
+    num_inducing = 90
+    latent_dim_q = 10
+    inference_mode = 'point' ## or 'map'
+    test_size = 200
+
 
 
