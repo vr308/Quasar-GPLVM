@@ -26,7 +26,7 @@ TRAINED_MODELS = BASE_PATH / "trained_models"
 
 ### experimental config
 
-RANDOM_SEEDS = [34,52,61,70,97]
+RANDOM_SEEDS = [34,52,61,70,97,42,96,12,7,4]
 
 size = '1k'  ## or '1k'
 

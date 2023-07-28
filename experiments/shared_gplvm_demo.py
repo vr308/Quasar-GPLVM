@@ -2,21 +2,16 @@
 # -*- coding: utf-8 -*-
 """
 Demo script for Shared GPLVM with split GPs
-
-TODO: 
-    
-    Test with MAP inference
-    Implement GPU deployment
-    Clean-up experiment scripts / model classes
     
 """
-from models.shared_gplvm import SharedGPLVM
+from models.shared_gplvm import SharedGPLVM, predict_joint_latent
 from models.latent_variable import PointLatentVariable, MAPLatentVariable
 from sklearn.model_selection import train_test_split
 import torch
 import os 
 import pickle as pkl
 import numpy as np
+import gc
 from tqdm import trange
 from prettytable import PrettyTable
 import gpytorch
@@ -24,8 +19,8 @@ from gpytorch.means import ConstantMean
 from gpytorch.mlls import VariationalELBO
 from models.likelihood import GaussianLikelihoodWithMissingObs
 from utils.load_data import load_spectra_labels
-from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, plot_partial_spectra_reconstruction_report
-from utils.metrics import rmse_missing, nll
+from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, spectra_reconstruction_report, plot_partial_spectra_reconstruction_report
+from utils.metrics import rmse_lum_bhm_edd, nll_lum_bhm_edd, rmse
 
 ## Import class and experiment configuration here
 
@@ -43,11 +38,12 @@ if __name__ == '__main__':
     
     # Load joint spectra and label data 
     
-    X, Y, means_X, std_X, means_Y, std_Y, snr = load_spectra_labels(hdu)
+    X, Y, means_X, std_X, means_Y, std_Y, X_sigma, Y_sigma, snr = load_spectra_labels(hdu)
     
     data = np.hstack((X,Y))
     
-    XY_train, XY_test = train_test_split(data, test_size=test_size, random_state=SEED)
+    XY_train, XY_test, train_idx, test_idx = train_test_split(data, np.arange(len(Y)), test_size=test_size, random_state=SEED)
+    snr_test = snr[test_idx]
     
     XY_train = torch.Tensor(XY_train)
     XY_test = torch.Tensor(XY_test)
@@ -102,7 +98,7 @@ if __name__ == '__main__':
     ################  variational params and inducing inputs using the optimizer provided. ########
     
     loss_list = []
-    iterator = trange(50, leave=True)
+    iterator = trange(10000, leave=True)
     batch_size = 100
     
     for i in iterator: 
@@ -129,44 +125,49 @@ if __name__ == '__main__':
         
     ####################### Save / Load trained model ##########################################
     
-    if os.path.isfile('trained_models/gplvm_1000_shared.pkl'):
-          with open('trained_models/gplvm_1000_shared.pkl', 'rb') as file:
-              model_sd, likl_sd = pkl.load(file)
-              model.load_state_dict(model_sd)
-              likelihood_sp.load_state_dict(likl_sd)
-              likelihood_lb.load_state_dict(likl_sd)
+    model_name = 'shared_gplvm_' + 'n_' + size + '_latent_dim_' + str(latent_dim) + '_n_inducing_' + str(n_inducing) + '_random_seed_' + str(BASE_SEED)
+    
+    if save_model:
+   
+        with open('trained_models/' + model_name + '.pkl', 'wb') as file:
+            pkl.dump((shared_model.state_dict(), likelihood_spectra.state_dict(),       likelihood_labels.state_dict()), file)
+            
+            
+    ## Loading pre-saved model
+    
+    # if os.path.isfile('trained_models/' + model_name + '.pkl'):
+    #       with open('trained_models/'+ model_name + '.pkl', 'rb') as file:
+    #           model_sd, likl_spectra_sd, likl_lb_sd = pkl.load(file)
+    #           shared_model.load_state_dict(model_sd)
+    #           likelihood_spectra.load_state_dict(likl_spectra_sd)
+    #           likelihood_labels.load_state_dict(likl_lb_sd)
 
-
-    with open('trained_models/gplvm_1000_shared.pkl', 'wb') as file:
-        pkl.dump((shared_model.cpu().state_dict(), likelihood_spectra.cpu().state_dict(), likelihood_labels.cpu()), file)
-        
     ####################### Split Reconstruction Framework (Training and Test) ##############
     
+    # ids = np.arange(200)
     
-    ids = np.arange(200)
+    # X_train = XY_train[::,0:-4]
+    # Y_train = XY_train[:,-4::]
     
-    X_train = XY_train[::,0:-4]
-    Y_train = XY_train[:,-4::]
+    # X_train_orig = X_train*std_X + means_X
+    # Y_train_orig = Y_train*std_Y + means_Y
     
-    X_train_orig = X_train*std_X + means_X
-    Y_train_orig = Y_train*std_Y + means_Y
-    
-    X_train_recon, X_train_pred_covar = shared_model.model_spectra.reconstruct_y(torch.Tensor(shared_model.Z.Z)[0:200], X_train[0:200], ae=False)
-    Y_train_recon, Y_train_pred_covar = shared_model.model_labels.reconstruct_y(torch.Tensor(shared_model.Z.Z)[0:200], Y_train[0:200], ae=False)
+    # X_train_recon, X_train_pred_covar = shared_model.model_spectra.reconstruct_y(torch.Tensor(shared_model.Z.Z)[0:200], X_train[0:200], ae=False)
+    # Y_train_recon, Y_train_pred_covar = shared_model.model_labels.reconstruct_y(torch.Tensor(shared_model.Z.Z)[0:200], Y_train[0:200], ae=False)
         
-    X_train_recon =  X_train_recon.T.detach().numpy()
-    Y_train_recon =  Y_train_recon.T.detach().numpy()
+    # X_train_recon =  X_train_recon.T.detach().numpy()
+    # Y_train_recon =  Y_train_recon.T.detach().numpy()
     
-    X_train_recon_orig = X_train_recon*std_X + means_X
-    Y_train_recon_orig = Y_train_recon*std_Y + means_Y
+    # X_train_recon_orig = X_train_recon*std_X + means_X
+    # Y_train_recon_orig = Y_train_recon*std_Y + means_Y
     
-    vars_X_noiseless = np.array([(m.diag()).detach().numpy() for m in X_train_pred_covar]).T ## extracting diagonals per dimensions
-    vars_X_noisy = np.array([m + likelihood_spectra.noise_covar.noise.flatten().detach().numpy() for m in vars_X_noiseless])
+    # vars_X_noiseless = np.array([(m.diag()).detach().numpy() for m in X_train_pred_covar]).T ## extracting diagonals per dimensions
+    # vars_X_noisy = np.array([m + likelihood_spectra.noise_covar.noise.flatten().detach().numpy() for m in vars_X_noiseless])
     
-    diags_Y = np.array([m.diag().sqrt().detach().numpy() for m in Y_train_pred_covar]).T #
+    # diags_Y = np.array([m.diag().sqrt().detach().numpy() for m in Y_train_pred_covar]).T #
     
-    X_train_pred_sigma = np.sqrt(vars_X_noisy)*std_X 
-    Y_train_pred_sigma = diags_Y*std_Y
+    # X_train_pred_sigma = np.sqrt(vars_X_noisy)*std_X 
+    # Y_train_pred_sigma = diags_Y*std_Y
     
     ################ Testing #######################################################################
     
@@ -179,91 +180,143 @@ if __name__ == '__main__':
         X_test = XY_test[::,0:-4]
         Y_test = XY_test[:,-4::]
         
-        X_test_orig = X_test*std_X + means_X
-        Y_test_orig = Y_test*std_Y + means_Y
+        X_test_orig = X_test.cpu()*std_X + means_X
+        Y_test_orig = Y_test.cpu()*std_Y + means_Y
         
-        test_model = shared_model.initialise_model_test(len(Y_test))
-
-        test_loss, test_model, Z_test = predict_joint_latent(test_model, X_test, None, likelihood_spectra, likelihood_labels, lr=0.001, prior_z = None, steps = 2000)
-
-        X_test_recon, X_test_pred_covar = test_model.model_spectra.reconstruct_y(Z_test.Z, X_test, ae=False)
-        Y_test_recon, Y_test_pred_covar = test_model.model_labels.reconstruct_y(Z_test.Z, Y_test, ae=False)
+        test_model = shared_model.initialise_model_test(len(Y_test), latent_dim)
         
-        X_test_recon =  X_test_recon.T.detach().numpy()
-        Y_test_recon =  Y_test_recon.T.detach().numpy()
+        if torch.cuda.is_available():
+            test_model = test_model.cuda()
+
+        test_loss, test_model, Z_test = predict_joint_latent(test_model, X_test, Y_test, likelihood_spectra, likelihood_labels, lr=0.005, prior_z = None, steps = 10000)
+
+        #X_test_pred, X_test_recon, X_test_pred_covar = test_model.model_spectra.reconstruct_y(Z_test.Z, X_test, ae=False)
+        #Y_test_pred, Y_test_recon, Y_test_pred_covar = test_model.model_labels.reconstruct_y(Z_test.Z, Y_test, ae=False)
+        
+        X_test_pred = likelihood_spectra(test_model.model_spectra(Z_test.Z))
+        Y_test_pred = likelihood_labels(test_model.model_labels(Z_test.Z))
+        
+        torch.cuda.empty_cache()
+        gc.collect()
+        
+        X_test_recon, X_test_pred_covar = X_test_pred.loc , X_test_pred.covariance_matrix
+        Y_test_recon, Y_test_pred_covar = Y_test_pred.loc , Y_test_pred.covariance_matrix
+        
+        X_test_recon = X_test_pred.loc 
+
+        X_test_recon =  X_test_recon.T.cpu().detach().numpy()
+        Y_test_recon =  Y_test_recon.T.cpu().detach().numpy()
         
         X_test_recon_orig = X_test_recon*std_X + means_X
         Y_test_recon_orig = Y_test_recon*std_Y + means_Y
         
-        vars_X_noiseless = np.array([(m.diag()).detach().numpy() for m in X_test_pred_covar]).T ## extracting diagonals per dimensions
-        vars_X_noisy = np.array([m + likelihood_spectra.noise_covar.noise.flatten().detach().numpy() for m in vars_X_noiseless])
-    
-        diags_Y = np.array([m.diag().sqrt().detach().numpy() for m in Y_train_pred_covar]).T #
+        spec_noise = likelihood_spectra.noise_covar.noise.sqrt().cpu().detach().flatten()
+        sigma_X = np.array([m.diag().sqrt().cpu().detach().numpy() for m in X_test_pred_covar]).T #
+        sigma_Y = np.array([m.diag().sqrt().cpu().detach().numpy() for m in Y_test_pred_covar]).T #
+
+        X_test_pred_sigma = (sigma_X + np.tile(spec_noise, reps=20).reshape(20,657))*std_X
+        Y_test_pred_sigma = sigma_Y*std_Y
         
-        X_test_pred_sigma = np.sqrt(vars_X_noisy)*std_X 
-        Y_test_pred_sigma = diags_Y*std_Y
+        torch.cuda.empty_cache()
+        gc.collect()
+        
+    ############### Compute and save the metrics for X and Y ##########################
+                    
     
-    ################## Partial observation region (Spectra reconstruction) ####################################################
-    
-    idx = 138
-    
-    test_point = torch.full(torch.Size([4,590]), torch.nan)
-    
-    obs_region_1 = np.arange(0,280)    ## first half of spectra 
-    obs_region_2 = np.arange(280,590)  ## last half of spectra 
-    obs_region_3 = np.arange(140,350)  ## obs middle part 
-    obs_region_4 = np.arange(310,400)  ## obs a small internal section 
-    
-    test_point[0,obs_region_1] = X_test[idx][obs_region_1]
-    test_point[1,obs_region_2] = X_test[idx][obs_region_2]
-    test_point[2,obs_region_3] = X_test[idx][obs_region_3]
-    test_point[3,obs_region_4] = X_test[idx][obs_region_4]
-    
-    #Z_latent = torch.Tensor(test_model.Z.Z)[idx].repeat(4).reshape(4,10)
-    test_model = shared_model.initialise_model_test(4)
-    test_point_Y = Y_test[idx].repeat(4).reshape(4,4)
+    # X_rmse_test = rmse(X_test_orig.cpu(), X_test_recon_orig)
+    # Y_rmse_test = rmse_lum_bhm_edd(Y_test_orig.cpu(), Y_test_recon_orig)
+    # X_nll_test = nll(X_test_pred, X_test, std_X)
+    # Y_nll_test = nll_lum_bhm_edd(Y_test_pred_filter, Y_test_filter, std_Y)
 
-    test_loss, test_model, Z_partial = predict_joint_latent(test_model, test_point, test_point_Y, likelihood_spectra, likelihood_labels, lr=0.005, prior_z = None, steps = 10000)
+    # print('X, Y -> Test Reconstruction error  = ' + str(X_rmse_test) +  '   ' + str(Y_rmse_test))
+    # #print('X, Y -> Neg. test log likelihood  = ' + str(X_nll_test) +   '   ' + str(Y_nll_test))
     
-    X_partial_recon, X_partial_pred_covar = shared_model.model_spectra.reconstruct_y(Z_partial.Z, test_point, ae=False)
+    # metrics = {
+    #         'model_name': model_name,
+    #         'X_test_rmse': X_rmse_test.item(),
+    #         #'X_test_nlpd': X_nll_test.item(),
+    #         'Y_test_rmse': str(np.array(Y_rmse_test)),
+    #         'Y_test_nlpd': str(np.array(Y_nll_test)),
+    #         'Y_rmse_all_in': np.mean(np.array(Y_rmse_test)).item(),
+    #         'Y_nll_all_in': np.mean(np.array(Y_nll_test)).item()
+    #          }
+    
+    # results_filename = f"results/{model_name}__.json"
+    # with open(results_filename, "w") as fp:
+    #        json.dump(metrics, fp, indent=4)
+     
+ #    ################## Partial observation region (Spectra reconstruction) ####################################################
+    
+ #    idx = 135
+    
+ #    test_point = torch.full(torch.Size([4,590]), np.nan).cuda()
+    
+ #    obs_region_1 = np.arange(0,280)    ## first half of spectra 
+ #    obs_region_2 = np.arange(280,590)  ## last half of spectra 
+ #    obs_region_3 = np.arange(140,350)  ## obs middle part 
+ #    obs_region_4 = np.arange(310,400)  ## obs a small internal section 
+    
+ #    test_point[0,obs_region_1] = X_test[idx][obs_region_1]
+ #    test_point[1,obs_region_2] = X_test[idx][obs_region_2]
+ #    test_point[2,obs_region_3] = X_test[idx][obs_region_3]
+ #    test_point[3,obs_region_4] = X_test[idx][obs_region_4]
+    
+ #    #Z_latent = torch.Tensor(test_model.Z.Z)[idx].repeat(4).reshape(4,10)
+ #    test_model = shared_model.initialise_model_test(4, latent_dim)
+    
+ #    if torch.cuda.is_available():
+ #        test_model = test_model.cuda()
+        
+ #    test_point_Y = Y_test[idx].repeat(4).reshape(4,4)
 
-    X_partial_recon_orig = X_partial_recon.T.detach().numpy()*std_X + means_X
+ #    test_loss, test_model, Z_partial = predict_joint_latent(test_model, test_point, test_point_Y, likelihood_spectra, likelihood_labels, lr=0.003, prior_z = None, steps = 5000, batch_size=4)
     
-    vars_X_noiseless = np.array([(m.diag()).detach().numpy() for m in X_partial_pred_covar]).T ## extracting diagonals per dimensions
-    vars_X_noisy = np.array([m + likelihood_spectra.noise_covar.noise.flatten().detach().numpy() for m in vars_X_noiseless])
-    X_partial_pred_sigma = np.sqrt(vars_X_noisy)*std_X 
+ #    X_partial_pred, X_partial_recon, X_partial_pred_covar = shared_model.model_spectra.reconstruct_y(Z_partial.Z, test_point, ae=False)
+
+ #    X_partial_recon_orig = X_partial_recon.T.cpu().detach().numpy()*std_X + means_X
     
-    plot_partial_spectra_reconstruction_report(X_partial_recon_orig, X_test_orig[idx], X_partial_pred_sigma)
+ #    spec_noise = likelihood_spectra.noise_covar.noise.sqrt().cpu().detach().flatten()
+ #    #sigma_X = np.array([m.diag().sqrt().cpu().detach().numpy() for m in X_partial_pred_covar]).T #
     
-    ####################### Visualisation ################################
+ #    vars_X_noiseless = np.array([(m.diag()).cpu().detach().numpy() for m in X_partial_pred_covar]).T ## extracting diagonals per dimensions
+ #    vars_X_noisy = np.array([m + likelihood_spectra.noise_covar.noise.flatten().cpu().detach().numpy() for m in vars_X_noiseless])
+ #    X_partial_pred_sigma = np.sqrt(vars_X_noisy)*std_X 
     
-    # plt.plot(np.isnan(XY_train).sum(axis=0)) ## check the presence of the data 
+ #    plot_partial_spectra_reconstruction_report(X_partial_recon_orig, X_test_orig[idx], X_partial_pred_sigma)
     
-    # ids = np.arange(200)
-    # col_range = np.arange(68,1000)
+ #    # ####################### Visualisation: Reconstructing spectra and labels ################################
     
-    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma[ids], obj_id=24)
-    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma[ids], obj_id=13)
-    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma[ids], obj_id=78)
-    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma[ids], obj_id=151)
+ #    # # plt.plot(np.isnan(XY_train).sum(axis=0)) ## check the presence of the data 
+    
+ #    ids = np.arange(200)
+ #    # # col_range = np.arange(68,1000)
+    
+ #    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma, obj_id=24)
+ #    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma, obj_id=13)
+ #    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma, obj_id=7)
+ #    plot_spectra_reconstructions(X_test_recon_orig, X_test_orig, X_test_pred_sigma, obj_id=151)
+    
+ #    spectra_reconstruction_report(X_test_recon_orig, X_test_orig[0:20], X_test_pred_sigma)
   
-    plot_y_label_comparison(Y_test_recon_orig[ids], Y_test_orig[ids], Y_test_pred_sigma[ids], snr[ids], col_id = 1, title='Luminosity')
-    plot_y_label_comparison(Y_test_recon_orig[ids], Y_test_orig[ids], Y_test_pred_sigma[ids], snr[ids], col_id = 2, title='Black hole mass')
-    plot_y_label_comparison(Y_test_recon_orig[ids], Y_test_orig[ids], Y_test_pred_sigma[ids], snr[ids], col_id = 3, title='Eddington luminosity')
+ #    # plot_y_label_comparison(Y_test_recon_orig[ids], Y_test_orig[ids], Y_test_pred_sigma[ids], Y_test_sigma[ids],  snr_test[ids], col_id = 1, title='Luminosity')
+ #    # plot_y_label_comparison(Y_test_recon_orig[ids], Y_test_orig[ids], Y_test_pred_sigma[ids], Y_test_sigma[ids], snr_test[ids], col_id = 2, title='Black hole mass')
+ #    # plot_y_label_comparison(Y_test_recon_orig[ids], Y_test_orig[ids], Y_test_pred_sigma[ids], snr_test[ids], col_id = 3, title='Eddington luminosity')
+    
+ #    plot_y_label_report(Y_test_recon_orig[ids], Y_test_orig[ids], Y_test_pred_sigma[ids], Y_test_sigma[ids], snr_test[ids])
         
-    # # # ################################
-    # Compute the metrics:
-                
-    # 1) Reconstruction error - Train & Test
+ #    # # # # ################################
+ #    ## Extra plots
     
-    mse_test = rmse_missing(Y_test, Y_test_recon.T)
-    nll_test = nll(Y_test_pred, Y_test, Y_std)
-    
-    print(f'Test Reconstruction error {model_name} = ' + str(mse_test))
-    print(f'Neg. test log likelihood {model_name} = ' + str(nll))
-    
-    mse_test = rmse_missing(Y_test, Y_test_recon.T)
-    nll_test = nll(Y_test_pred, Y_test, Y_std)
+ # #plt.scatter(Y_test_recon_orig[:,2][ids], Y_test_recon_orig[:,1][ids], c=Y_test_orig[:,0][ids].cpu().detach().numpy())
+ 
+ #     plt.figure()
+ #     plt.plot(loss_100_2, label='Q=2')
+ #     plt.plot(loss_100_5, label='Q=5',alpha=0.8)
+ #     plt.plot(loss_100_10, label='Q=10', alpha=0.7)
+ #     plt.plot(loss_100_15, label='Q=15', alpha=0.7)
+ #     plt.xticks(fontsize='small')
+ #     plt.yticks(fontsize='small')
+ #     plt.legend(fontsize='small')
+ #     plt.title('Joint ELBOs for varying latent dim. Q', fontsize='small')
+     
 
-    print(f'Test Reconstruction error {model_name} = ' + str(mse_test))
-    print(f'Neg. test log likelihood {model_name} = ' + str(nll))

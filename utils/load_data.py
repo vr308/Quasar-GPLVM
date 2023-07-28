@@ -19,8 +19,8 @@ f = open('data/data_HST_1220_5000_2A.pickle', 'rb')
 data, data_ivar = pickle.load(f)
 f.close()
 
-#hdu = fits.open('data/data_norm_sdss16_SNR10_all.fits')  
-hdu = fits.open('data/data_norm_sdss16_SNR10_random_1.fits')
+hdu = fits.open('data/data_norm_sdss16_SNR10_all.fits')  
+#hdu = fits.open('data/data_norm_sdss16_SNR10_random_1.fits')
 
 # -------------------------------------------------------------------------------
 # initialize parameters
@@ -84,6 +84,7 @@ def load_spectra_labels(hdu):
     
     # set missing values to NaN
     X[masks == 0.] = np.nan
+    X_ivar[masks == 0.] = np.nan
     
     # # full data set will have 23085 quasars (or ~80000), only 1000 now
     # X = X#[:1000, :]
@@ -97,7 +98,13 @@ def load_spectra_labels(hdu):
     X = (X - means_X) / std_X
     Y = (Y - means_Y) / std_Y
     
-    return X, Y, means_X, std_X, means_Y, std_Y, snr
+    # extract X & Y measurement uncertainty 
+    X_sigma = np.sqrt(1/X_ivar)
+    Y_sigma = np.sqrt(1/Y_ivar)
+    
+    Y_sigma[:,2] = np.sqrt(Y_ivar[:,2])
+    
+    return X, Y, means_X, std_X, means_Y, std_Y, X_sigma, Y_sigma, snr
 
 
 
