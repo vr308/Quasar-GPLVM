@@ -17,7 +17,7 @@ from prettytable import PrettyTable
 import gpytorch
 from gpytorch.means import ConstantMean
 from gpytorch.mlls import VariationalELBO
-from models.likelihood import GaussianLikelihoodWithMissingObs
+from models.likelihood import GaussianLikelihoodWithMissingObs, FixedNoiseGaussianLikelihood
 from utils.load_data import load_spectra_labels
 from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, spectra_reconstruction_report, plot_partial_spectra_reconstruction_report
 from utils.metrics import rmse_lum_bhm_edd, nll_lum_bhm_edd, rmse
@@ -67,10 +67,15 @@ if __name__ == '__main__':
     
     shared_model = SharedGPLVM(N, spectra_dim, label_dim, latent_dim, n_inducing)
     
-    # Likelihood
+    # Missing data Likelihood
     
     likelihood_spectra = GaussianLikelihoodWithMissingObs(batch_shape = shared_model.model_spectra.batch_shape)
     likelihood_labels = GaussianLikelihoodWithMissingObs(batch_shape = shared_model.model_labels.batch_shape)
+    
+    # Fixed Noise Gaussian Likelihood 
+    
+    likelihood_spectra = FixedNoiseGaussianLikelihood(noise=torch.Tensor(X_sigma), learn_additional_noise=False, batch_shape=shared_model.model_spectra.batch_shape)
+    likelihood_labels = FixedNoiseGaussianLikelihood(noise=torch.Tensor(Y_sigma), learn_additional_noise=False, batch_shape=shared_model.model_labels.batch_shape)
     
     # Deploy model and likelihoods on cuda
     
