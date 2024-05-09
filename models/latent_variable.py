@@ -110,5 +110,17 @@ class GaussianLatentVariable(LatentVariable):
         self.update_added_loss_term('z_kl', z_kl)
         return q_z.rsample()
     
+    def sample(self, batch_idx=None):
+        
+        if batch_idx is None:
+            batch_idx = np.arange(self.n) 
+        
+        q_mu_batch = self.q_mu[batch_idx, ...]
+        q_log_sigma_batch = self.q_log_sigma[batch_idx, ...]
+
+        q_z = torch.distributions.Normal(q_mu_batch, q_log_sigma_batch.exp())
+        return q_z.rsample()
+
+    
     def reset(self, Z_init_test, prior_z_test, data_dim):
         self.__init__(Z_init_test, prior_z_test, data_dim)

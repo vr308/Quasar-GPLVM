@@ -7,7 +7,6 @@ TODO:
     
     Test with MAP inference
     Test with Gaussian latent vars
-    Implement GPU deployment
 
 """
 

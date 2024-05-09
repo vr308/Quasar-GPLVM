@@ -7,7 +7,7 @@ Shared GPLVM Model classes
 
 """
 from models.gplvm import BayesianGPLVM
-from models.latent_variable import PointLatentVariable, MAPLatentVariable
+from models.latent_variable import PointLatentVariable, MAPLatentVariable, GaussianLatentVariable
 import torch
 import os
 import pickle as pkl
@@ -26,6 +26,8 @@ from gpytorch.distributions import MultivariateNormal
 from models.likelihood import GaussianLikelihoodWithMissingObs
 from utils.load_data import load_joint_spectra_labels_small, load_spectra_labels
 from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, plot_partial_spectra_reconstruction_report
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class QuasarDemoModel(BayesianGPLVM):
      def __init__(self, Z, n, data_dim, latent_dim, n_inducing, inducing_inputs):
@@ -80,8 +82,13 @@ class SharedGPLVM(gpytorch.Module):
         
             Z = PointLatentVariable(Z_init)
             
+        elif latent_config == 'gauss':
+            
+            prior_z = NormalPrior(Z_prior_mean, torch.ones_like(Z_prior_mean))
+            Z = GaussianLatentVariable(Z_init, prior_z, data_dim=594)
+            
         self.Z = Z
-        self.inducing_inputs = torch.nn.Parameter(torch.randn(n_inducing, latent_dim))
+        self.inducing_inputs = torch.nn.Parameter(torch.randn(n_inducing, latent_dim), requires_grad=True)
         
         self.model_spectra = QuasarDemoModel(self.Z, n, spectra_dim, latent_dim, n_inducing, self.inducing_inputs)
         self.model_labels = QuasarDemoModel(self.Z, n, label_dim, latent_dim, n_inducing, self.inducing_inputs)
