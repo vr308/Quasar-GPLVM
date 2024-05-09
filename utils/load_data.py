@@ -85,6 +85,7 @@ def load_spectra_labels(hdu):
     
     # set missing values to NaN
     X[masks == 0.] = np.nan
+    X_ivar[masks == 0.] = np.nan
     
     # slice at wave = 1216
     X = X[:,wave > 1216]
@@ -126,6 +127,15 @@ def load_synthetic_labels_no_redshift(Y_test, Y_test_orig, means_Y, std_Y, devic
     Y_synthetic_edd = Y_synthetic[200:300]
     
     return Y_synthetic_lumin.to(device), Y_synthetic_bhm.to(device), Y_synthetic_edd.to(device)
+
+    # extract X & Y measurement uncertainty 
+    
+    X_sigma = np.sqrt(1/X_ivar)
+    Y_sigma = np.sqrt(1/Y_ivar)
+    
+    Y_sigma[:,2] = np.sqrt(Y_ivar[:,2])
+    
+    return X, Y, means_X, std_X, means_Y, std_Y, X_sigma, Y_sigma, snr
 
 
 
