@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Shared GPLVM Model classes
+Shared GPLVM Model classes - testing something out here
 
 """
 from models.gplvm import BayesianGPLVM
