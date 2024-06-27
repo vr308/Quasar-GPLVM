@@ -30,12 +30,10 @@ from models.likelihood import GaussianLikelihoodWithMissingObs
 from utils.load_data import load_spectra_labels
 from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, spectra_reconstruction_report, plot_partial_spectra_reconstruction_report
 from utils.metrics import rmse_lum_bhm_edd, nll_lum_bhm_edd, rmse
-from utils.metrics import rmse_missing, nll
-from models.likelihood import GaussianLikelihoodWithMissingObs, FixedNoiseGaussianLikelihood
+from models.likelihood import GaussianLikelihoodWithMissingObs
 from utils.load_data import load_spectra_labels
 from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, spectra_reconstruction_report, plot_partial_spectra_reconstruction_report
 from utils.metrics import rmse_lum_bhm_edd, nll_lum_bhm_edd, rmse
-
 
 ## Import class and experiment configuration here
 
@@ -54,18 +52,11 @@ if __name__ == '__main__':
     
     # Load joint spectra and label data 
     
-    X, Y, means_X, std_X, means_Y, std_Y, snr, wave = load_spectra_labels(hdu)
+    X, Y, means_X, std_X, means_Y, std_Y, X_ivar, Y_ivar, snr, wave  = load_spectra_labels(hdu)
 
     data = np.hstack((X,Y))[0:15000]
     
     XY_train, XY_test, train_idx, test_idx = train_test_split(data, np.arange(len(data)), test_size=test_size, random_state=BASE_SEED)
-
-    X, Y, means_X, std_X, means_Y, std_Y, X_sigma, Y_sigma, snr = load_spectra_labels(hdu)
-    
-    data = np.hstack((X,Y))[0:15000]
-    
-    XY_train, XY_test = train_test_split(data, test_size=test_size, random_state=BASE_SEED)
-    XY_train, XY_test, train_idx, test_idx = train_test_split(data, np.arange(len(Y)), test_size=test_size, random_state=SEED)
     snr_test = snr[test_idx]
 
     XY_train = torch.Tensor(XY_train).to(device)
@@ -91,20 +82,7 @@ if __name__ == '__main__':
     
     likelihood_spectra = GaussianLikelihoodWithMissingObs(batch_shape = shared_model.model_spectra.batch_shape).to(device)
     likelihood_labels = GaussianLikelihoodWithMissingObs(batch_shape = shared_model.model_labels.batch_shape).to(device)
-
-    # Fixed Noise Gaussian Likelihood 
-    
-    likelihood_spectra = FixedNoiseGaussianLikelihood(noise=torch.Tensor(X_sigma), learn_additional_noise=False, batch_shape=shared_model.model_spectra.batch_shape)
-    likelihood_labels = FixedNoiseGaussianLikelihood(noise=torch.Tensor(Y_sigma), learn_additional_noise=False, batch_shape=shared_model.model_labels.batch_shape)
-    
-    # Deploy model and likelihoods on cuda
-    
-    if torch.cuda.is_available():
-        
-        shared_model = shared_model.cuda()
-        likelihood_spectra = likelihood_spectra.cuda()
-        llikelihood_labels = likelihood_labels.cuda()
-
+ 
     # Declaring objective to be optimised along with optimiser
     
     mll_spectra = VariationalELBO(likelihood_spectra, shared_model.model_spectra, num_data=len(XY_train)).to(device)

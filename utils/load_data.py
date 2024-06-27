@@ -105,7 +105,7 @@ def load_spectra_labels(hdu):
     X = (X - means_X) / std_X
     Y = (Y - means_Y) / std_Y
     
-    return X, Y, means_X, std_X, means_Y, std_Y, X_ivar, Y_ivar, snr, wave, X_ivar, Y_ivar
+    return X, Y, means_X, std_X, means_Y, std_Y, X_ivar, Y_ivar, snr, wave
 
 def load_synthetic_labels_no_redshift(Y_test, Y_test_orig, means_Y, std_Y, X_ivar, Y_ivar, device):
     
