@@ -59,6 +59,34 @@ def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_var, col
     #plt.plot(np.arange(5), np.arange(5),'--',c='k', alpha=0.7)
     plt.ylabel(ylabel, fontsize='large')
     plt.xlabel(xlabel, fontsize='large')
+        # plt.plot(X_partial_recon_orig[i], c='b', alpha=0.8, label='Predicted mean', lw=0.9)
+        # plt.plot(X_train_orig, c='r', linestyle='--', alpha=0.8, label='Ground truth', lw=0.9)
+        # lower = X_partial_recon_orig[i] - 2*X_partial_pred_sigma[i]
+        # upper = X_partial_recon_orig[i] + 2*X_partial_pred_sigma[i]
+        # plt.axvspan(xmin=obs_regions[i][0], xmax=obs_regions[i][1], color='orange', alpha=0.3, label='Observed Region')
+        # plt.fill_between(np.arange(len(X_partial_recon_orig.T)), lower, upper, color='b', alpha=0.3, label=r'$\pm2\sigma$')
+        # plt.tight_layout()
+        # #plt.xticks([])
+        # plt.tick_params(axis='both', which='major', labelsize=8)
+        # plt.suptitle('Quasar Spectra Reconstruction [from partial observations]', fontsize='small')
+        # plt.xticks([])
+        # if i == 0:
+        #     plt.legend(fontsize='small')
+        # plt.ylabel('Normalised Flux', fontsize='small')
+        # if i == 3:
+        #     plt.xlabel('Rest-frame wavelength', fontsize='small')
+
+
+def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, Y_test_sigma, snr_test, col_id, title):
+    
+    plt.figure()
+    plt.scatter(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], c=snr_test,cmap='jet')
+    plt.errorbar(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], yerr=Y_test_pred_sigma[:,col_id], fmt='None', color='k', alpha=0.2, errorevery=1)
+    plt.errorbar(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], xerr=2*Y_test_sigma[:,col_id], fmt='None', color='k', alpha=0.4, errorevery=1)
+    xpoints = ypoints = plt.xlim()
+    plt.plot(xpoints, ypoints, linestyle='--', color='k',alpha=0.7, scalex=False, scaley=False)
+    plt.ylabel(r'Predicted ', fontsize='large')
+    plt.xlabel(r'Measured ', fontsize='large')
     plt.title(title)
     cbar = plt.colorbar()
     cbar.set_label('SNR Ratio')

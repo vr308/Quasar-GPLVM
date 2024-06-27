@@ -137,9 +137,7 @@ def load_synthetic_labels_no_redshift(Y_test, Y_test_orig, means_Y, std_Y, X_iva
     
     Y_sigma[:,2] = np.sqrt(Y_ivar[:,2])
     
-    return 
-
-
+    return X, Y, means_X, std_X, means_Y, std_Y, X_sigma, Y_sigma, snr
 
 def load_synthetic_labels(Y_test, Y_test_orig, means_Y, std_Y):
     
