@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Shared GPLVM Model classes
-
-@author: vr308
+Shared GPLVM Model classes - testing something out here3
 
 """
 from models.gplvm import BayesianGPLVM
@@ -52,6 +50,8 @@ class QuasarDemoModel(BayesianGPLVM):
          
         self.variational_strategy.inducing_points = self.shared_inducing_inputs
         
+        self.variational_strategy = self.variational_strategy.cuda()
+        
         mean_z = self.mean_module(Z)
         covar_z = self.covar_module(Z)
         dist = MultivariateNormal(mean_z, covar_z)
@@ -88,8 +88,7 @@ class SharedGPLVM(gpytorch.Module):
             Z = GaussianLatentVariable(Z_init, prior_z, data_dim=594)
             
         self.Z = Z
-        self.inducing_inputs = torch.nn.Parameter(torch.randn(n_inducing, latent_dim), requires_grad=True)
-        
+        self.inducing_inputs = torch.nn.Parameter(torch.randn(n_inducing, latent_dim, device='cuda'))
         self.model_spectra = QuasarDemoModel(self.Z, n, spectra_dim, latent_dim, n_inducing, self.inducing_inputs)
         self.model_labels = QuasarDemoModel(self.Z, n, label_dim, latent_dim, n_inducing, self.inducing_inputs)
         

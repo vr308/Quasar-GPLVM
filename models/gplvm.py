@@ -146,7 +146,7 @@ class BayesianGPLVM(ApproximateGP):
             # Just decode from the Z that is passed
             # Returns a batch of multivariate-normals 
             y_pred = self(Z)
-            return y_pred.loc, y_pred.covariance_matrix
+            return y_pred, y_pred.loc, y_pred.covariance_matrix
 
     def get_trainable_param_names(self):
         
