@@ -8,6 +8,7 @@ Loading the small base data for N = 30
 import pickle
 import numpy as np
 import torch
+from utils.config import size
 from astropy.io import fits
 
 # 1k dataset -> 'data/data_norm_sdss16_SNR10_random_1.fits'
@@ -85,13 +86,15 @@ def load_spectra_labels(hdu):
     
     # set missing values to NaN
     X[masks == 0.] = np.nan
+    X_ivar[masks == 0.] = np.nan
     
-    # slice at wave = 1216
-    X = X[:,wave > 1216]
-    wave = wave[wave > 1216]
+    if size == '20k':
+        # slice at wave = 1216
+        X = X[:,wave > 1216]
+        wave = wave[wave > 1216]
     
     # remove redshift feature - column 0 
-    Y = Y[:,1:]
+    #Y = Y[:,1:]
     
     means_X = np.nanmean(X, axis = 0)
     means_Y = np.nanmean(Y, axis = 0)
@@ -101,9 +104,9 @@ def load_spectra_labels(hdu):
     X = (X - means_X) / std_X
     Y = (Y - means_Y) / std_Y
     
-    return X, Y, means_X, std_X, means_Y, std_Y, snr, wave
+    return X, Y, means_X, std_X, means_Y, std_Y, X_ivar, Y_ivar, snr, wave, X_ivar, Y_ivar
 
-def load_synthetic_labels_no_redshift(Y_test, Y_test_orig, means_Y, std_Y, device):
+def load_synthetic_labels_no_redshift(Y_test, Y_test_orig, means_Y, std_Y, X_ivar, Y_ivar, device):
     
     norm_means = torch.nanmean(Y_test, dim=0)
     Y_synthetic = norm_means.repeat(300,1)
@@ -126,6 +129,15 @@ def load_synthetic_labels_no_redshift(Y_test, Y_test_orig, means_Y, std_Y, devic
     Y_synthetic_edd = Y_synthetic[200:300]
     
     return Y_synthetic_lumin.to(device), Y_synthetic_bhm.to(device), Y_synthetic_edd.to(device)
+
+    # extract X & Y measurement uncertainty 
+    
+    X_sigma = np.sqrt(1/X_ivar)
+    Y_sigma = np.sqrt(1/Y_ivar)
+    
+    Y_sigma[:,2] = np.sqrt(Y_ivar[:,2])
+    
+    return 
 
 
 

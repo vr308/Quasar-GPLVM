@@ -26,17 +26,17 @@ TRAINED_MODELS = BASE_PATH / "trained_models"
 
 ### experimental config
 
-RANDOM_SEEDS = [34,52,61,70,97]
+RANDOM_SEEDS = [34,52,61,70,97,42,96,12,7,4]
 
 size = '20k'  ## or '1k'
 
 if size == '20k':
     
     hdu = fits.open('data/data_norm_sdss16_SNR10_all.fits')
-    num_inducing = 500
+    num_inducing = 270
     latent_dim = 10
     inference_mode = 'point' ## or 'map'
-    test_size = 4000
+    test_size = 7000
     
 else:
     
