@@ -13,6 +13,7 @@ from astropy.io import fits
 
 # 1k dataset -> 'data/data_norm_sdss16_SNR10_random_1.fits'
 # 20k dataset -> 'data/data_HST_1220_5000_2A.pickle'
+
 # -------------------------------------------------------------------------------
 # load data
 # -------------------------------------------------------------------------------
@@ -21,7 +22,7 @@ f = open('data/data_HST_1220_5000_2A.pickle', 'rb')
 data, data_ivar = pickle.load(f)
 f.close()
 
-hdu = fits.open('data/data_norm_sdss16_SNR10_all.fits')  
+#hdu = fits.open('data/data_norm_sdss16_SNR10_all.fits')  
 #hdu = fits.open('data/data_norm_sdss16_SNR10_random_1.fits')
 
 # -------------------------------------------------------------------------------

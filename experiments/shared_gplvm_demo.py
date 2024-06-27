@@ -54,28 +54,20 @@ if __name__ == '__main__':
     
     # Load joint spectra and label data 
     
-<<<<<<< HEAD
     X, Y, means_X, std_X, means_Y, std_Y, snr, wave = load_spectra_labels(hdu)
-<<<<<<< HEAD
 
     data = np.hstack((X,Y))[0:15000]
     
     XY_train, XY_test, train_idx, test_idx = train_test_split(data, np.arange(len(data)), test_size=test_size, random_state=BASE_SEED)
-=======
-=======
+
     X, Y, means_X, std_X, means_Y, std_Y, X_sigma, Y_sigma, snr = load_spectra_labels(hdu)
->>>>>>> c0280532bebcb054486a8c1b0d6e1e595e1373f5
     
     data = np.hstack((X,Y))[0:15000]
     
-<<<<<<< HEAD
     XY_train, XY_test = train_test_split(data, test_size=test_size, random_state=BASE_SEED)
-=======
     XY_train, XY_test, train_idx, test_idx = train_test_split(data, np.arange(len(Y)), test_size=test_size, random_state=SEED)
     snr_test = snr[test_idx]
->>>>>>> c0280532bebcb054486a8c1b0d6e1e595e1373f5
->>>>>>> 9780a4ba4a3b2abd9eef1347850076dbb0bb6666
-    
+
     XY_train = torch.Tensor(XY_train).to(device)
     XY_test = torch.Tensor(XY_test).to(device)
     std_X = torch.Tensor(std_X).to(device)
