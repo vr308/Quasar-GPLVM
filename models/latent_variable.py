@@ -8,6 +8,7 @@ Latent Variable class with sub-classes that determine type of inference for the 
 import torch
 import gpytorch
 import numpy as np
+from torch import nn
 from torch.distributions import kl_divergence
 from gpytorch.mlls.added_loss_term import AddedLossTerm
 
@@ -124,3 +125,86 @@ class GaussianLatentVariable(LatentVariable):
     
     def reset(self, Z_init_test, prior_z_test, data_dim):
         self.__init__(Z_init_test, prior_z_test, data_dim)
+        
+
+class Masked_NNEncoder(LatentVariable):    
+    def __init__(self, n, latent_dim, prior_z, data_dim, embedding_dim, layers):
+        super().__init__(n, latent_dim)
+        
+        self.prior_z = prior_z
+        self.data_dim = data_dim
+        self.latent_dim = latent_dim
+        self.embedding = nn.Parameter(torch.randn(embedding_dim))  # Learnable mask embedding
+
+        self._init_mu_nnet(layers)
+        self._init_sg_nnet(len(layers))
+        self.register_added_loss_term("x_kl")
+
+        jitter = torch.eye(latent_dim).unsqueeze(0)*1e-5
+        self.jitter = torch.cat([jitter for i in range(n)], axis=0).cuda()
+
+    def _get_mu_layers(self, layers):
+        return (self.data_dim,) + layers + (self.latent_dim,)
+
+    def _init_mu_nnet(self, layers):
+        layers = self._get_mu_layers(layers)
+        n_layers = len(layers)
+
+        self.mu_layers = nn.ModuleList([ \
+            nn.Linear(layers[i], layers[i + 1]) \
+            for i in range(n_layers - 1)])
+
+    def _get_sg_layers(self, n_layers):
+        n_sg_out = self.latent_dim**2
+        n_sg_nodes = (self.data_dim + n_sg_out)//2
+        sg_layers = (self.data_dim,) + (n_sg_nodes,)*n_layers + (n_sg_out,)
+        return sg_layers
+
+    def _init_sg_nnet(self, n_layers):
+        layers = self._get_sg_layers(n_layers)
+        n_layers = len(layers)
+
+        self.sg_layers = nn.ModuleList([ \
+            nn.Linear(layers[i], layers[i + 1]) \
+            for i in range(n_layers - 1)])
+
+    def mu(self, Y):
+        mu = torch.tanh(self.mu_layers[0](Y))
+        for i in range(1, len(self.mu_layers)):
+            mu = torch.tanh(self.mu_layers[i](mu))
+            if i == (len(self.mu_layers) - 1): mu = mu * 5
+        return mu        
+
+    def sigma(self, Y):
+        sg = torch.tanh(self.sg_layers[0](Y))
+        for i in range(1, len(self.sg_layers)):
+            sg = torch.tanh(self.sg_layers[i](sg))
+            if i == (len(self.sg_layers) - 1): sg = sg * 5
+
+        sg = sg.reshape(len(sg), self.latent_dim, self.latent_dim)
+        sg = torch.einsum('aij,akj->aik', sg, sg)
+        return sg + self.jitter
+
+    def forward(self, Y, mask, batch_idx=None):
+        
+        mask_embedding = mask * self.embedding.unsqueeze(0)  # Apply mask embedding
+        Y = torch.where(torch.isnan(Y), mask_embedding, Y) 
+        
+        mu = self.mu(Y)
+        sg = self.sigma(Y)
+
+        if batch_idx is None:
+            batch_idx = np.arange(self.n)
+
+        mu = mu[batch_idx, ...]
+        sg = sg[batch_idx, ...]
+
+        q_z = torch.distributions.MultivariateNormal(mu, sg)
+
+        prior_z = self.prior_z
+        prior_z.loc = prior_z.loc[:len(batch_idx), ...]
+        prior_z.covariance_matrix = prior_z.covariance_matrix[:len(batch_idx), ...]
+
+        x_kl = kl_gaussian_loss_term(q_z, self.prior_z, len(batch_idx), self.data_dim)
+        self.update_added_loss_term('x_kl', x_kl)
+        return q_z.rsample()

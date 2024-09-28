@@ -1,12 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Demo script for bGPLVM Gaussian with different inference modes. 
-
-TODO: 
-    
-    Test with MAP inference
-    Test with Gaussian latent vars
+Demo script for Base GPLVM - single set of hyperparameters across all dimensions 
 
 """
 
@@ -28,8 +23,9 @@ from gpytorch.variational import CholeskyVariationalDistribution
 from gpytorch.kernels import ScaleKernel, RBFKernel, RQKernel
 from gpytorch.distributions import MultivariateNormal
 from models.likelihood import GaussianLikelihoodWithMissingObs
-from utils.load_data import load_joint_spectra_labels_small, load_spectra_labels_large
+from utils.load_data import load_spectra_labels
 from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison
+from utils.config import BASE_SEED, hdu, test_size, num_inducing, latent_dim
 
 def _init_pca(Y, latent_dim):
     U, S, V = torch.pca_lowrank(Y, q = latent_dim)
@@ -103,38 +99,36 @@ class QuasarMiniDemoModel(BayesianGPLVM):
      
 if __name__ == '__main__':
     
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     # Setting seed for reproducibility
-    SEED = 7
-    torch.manual_seed(SEED)
+    
+    torch.manual_seed(BASE_SEED)
 
     # Load joint spectra and label data 
     
-    #data = load_joint_spectra_labels_small()
-    X, Y, means_X, std_X, means_Y, std_Y, snr = load_spectra_labels_large()
+    X, Y, means_X, std_X, means_Y, std_Y, X_ivar, Y_ivar, snr, wave = load_spectra_labels(hdu)
     
     data = np.hstack((X,Y))
     
-    XY_train, XY_test = train_test_split(data, test_size=200, random_state=SEED)
-    #lb_train, lb_test = train_test_split(labels, test_size=100, random_state=SEED)
+    XY_train, XY_test = train_test_split(data, test_size=test_size, random_state=BASE_SEED)
     
-    XY_train = torch.Tensor(XY_train)
-    XY_test = torch.Tensor(XY_test)
+    XY_train = torch.Tensor(XY_train).to(device)
+    XY_test = torch.Tensor(XY_test).to(device)
     
     # Setting shapes
     N = len(XY_train)
     data_dim = XY_train.shape[1]
-    latent_dim = 10
-    n_inducing = 70
     pca = False
       
     # Model
-    model = QuasarMiniDemoModel(N, data_dim, latent_dim, n_inducing, pca=pca, kernel_config='partition')
+    model = QuasarMiniDemoModel(N, data_dim, latent_dim, num_inducing, pca=pca, kernel_config='standard').to(device)
     
     # Likelihood
-    likelihood = GaussianLikelihoodWithMissingObs(batch_shape=model.batch_shape)
+    likelihood = GaussianLikelihoodWithMissingObs(batch_shape=model.batch_shape).to(device)
 
     # Declaring objective to be optimised along with optimiser
-    mll = VariationalELBO(likelihood, model, num_data=len(XY_train))
+    mll = VariationalELBO(likelihood, model, num_data=len(XY_train)).to(device)
     
     optimizer = torch.optim.Adam([
     {'params': model.parameters()},
@@ -201,8 +195,6 @@ if __name__ == '__main__':
     
     # X_pred_var = diags[::,0:-3]*scales[7:]
     # Y_pred_var = diags[:,-3::]*slabs
-    
-    ########################### Testing Framework #################################
     
     
     ###################### Visualisation ################################

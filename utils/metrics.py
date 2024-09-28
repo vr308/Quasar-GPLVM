@@ -7,31 +7,42 @@ Negative test log-likelihood and sq. root mean squared error
 
 import torch
 import numpy as np
-from scipy.stats import stats 
+from torch.distributions import Normal
 
-# def nll(X_test_pred, X_test, X_std):
-
-#       try:
-          
-#           chol = torch.linalg.cholesky(pred.covariance_matrix + torch.eye(len(test_x))*1e-4)
-          
-#       except RuntimeError:
-          
-#           print('Not psd for sample ' + str(i))
-                 
-#       lpd = X_test_pred.log_prob(X_test.T)
-#       # return the average
-#       avg_lpd_rescaled = lpd.cpu().detach()/len(X_test) - torch.log(torch.Tensor(X_std))
-#       return -avg_lpd_rescaled.mean()
-
-def nll_lum_bhm_edd(Y_test_pred, Y_test, Y_std):
+def mean_absolute_error_spectra(X_train_orig, X_train_recon_orig):
     
-      ## clear out the Nan
-      nan_ids = torch.where(Y_test.isnan())
-      lpd = Y_test_pred.log_prob(Y_test.T)
-      # return the average
-      avg_lpd_rescaled = lpd.cpu().detach()/len(Y_test) - torch.log(torch.Tensor(Y_std))
-      return -avg_lpd_rescaled[1:]
+    return torch.nanmean(torch.abs(X_train_orig - X_train_recon_orig))
+
+def mean_absolute_error_labels(Y_train_orig, Y_train_recon_orig):
+    
+    return torch.nanmean(torch.abs(Y_train_orig - Y_train_recon_orig), dim=0)
+
+def nll_lum_bhm_edd(Y_test_pred, Y_test, std_Y, likelihood_labels):
+    
+      mask = ~torch.isnan(Y_test).any(dim=1)
+      Y_test = Y_test[mask]
+      skip_ids = torch.nonzero(~mask, as_tuple=False).squeeze()
+      lpd_n = []
+      
+      for i in range(len(Y_test)):
+          
+          if i not in skip_ids:
+              
+              # Extract the mean and covariance for the marginal distribution
+              marginal_mean = Y_test_pred.loc.T[i] 
+              marginal_var = Y_test_pred.covariance_matrix[:,i,i]
+    
+              # Create the marginal distribution
+              Y_pred_marginal = Normal(marginal_mean, torch.sqrt(marginal_var + likelihood_labels.noise_covar.noise.flatten()))
+              lpd = Y_pred_marginal.log_prob(Y_test[i]).cpu().detach()
+              lpd_n.append(lpd)
+            
+          else:
+                continue;
+        
+      avg_lpd_rescaled = lpd.mean(dim=0) - torch.log(std_Y)
+      
+      return -avg_lpd_rescaled
   
 def rmse(X_test_orig, X_test_recon_orig):
     

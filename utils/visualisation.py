@@ -35,7 +35,7 @@ def plot_partial_spectra_reconstruction_report(wave, X_partial_recon_orig, X_tes
     
         plt.subplot(4,1,i+1)
         plt.plot(wave, X_partial_recon_orig[i], c='b', alpha=0.5, label='predicted spectrum')
-        plt.plot(wave, X_test_orig, c='r', linestyle='dotted', alpha=0.8, label=r'data: $\log_{10}(M_{\bullet}/M_{\odot})$ ' + str(np.round(bhm_value.item(),4)))
+        plt.plot(wave, X_test_orig, c='r', linestyle='dotted', alpha=0.8, label=r'data: $\log_{10}(M_{\bullet}/M_{\odot}) = $ ' + str(np.round(bhm_value.item(),4)))
         lower = X_partial_recon_orig[i] - 3*X_partial_pred_sigma[i]
         upper = X_partial_recon_orig[i] + 3*X_partial_pred_sigma[i]
         plt.axvspan(xmin=wave[obs_regions[i][0]], xmax=wave[obs_regions[i][1]], color='orange', alpha=0.3, label='Observed Region')
@@ -53,7 +53,7 @@ def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_var, col
     
     plt.figure()
     plt.scatter(Y_test_orig[:,col_id].cpu().detach(), Y_test_recon_orig[:,col_id].cpu().detach(), c=colors, cmap=cmap)
-    plt.errorbar(Y_test_orig[:,col_id].cpu().detach(), Y_test_recon_orig[:,col_id].cpu().detach(), c='peru', alpha=0.5, yerr=2*Y_test_pred_var[:,col_id].cpu().detach(), fmt='None')
+    plt.errorbar(Y_test_orig[:,col_id].cpu().detach(), Y_test_recon_orig[:,col_id].cpu().detach(), c='peru', alpha=0.5, yerr=1*Y_test_pred_var[:,col_id].cpu().detach(), fmt='None')
     xpoints = ypoints = plt.xlim()
     plt.plot(xpoints, ypoints, linestyle='--', color='k',alpha=0.7, scalex=False, scaley=False)
     #plt.plot(np.arange(5), np.arange(5),'--',c='k', alpha=0.7)
@@ -89,7 +89,7 @@ def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, Y
     plt.xlabel(r'Measured ', fontsize='large')
     plt.title(title)
     cbar = plt.colorbar()
-    cbar.set_label('SNR Ratio')
+    cbar.set_label('SNR')
 
         # plt.plot(X_partial_recon_orig[i], c='b', alpha=0.8, label='Predicted mean', lw=0.9)
         # plt.plot(X_train_orig, c='r', linestyle='--', alpha=0.8, label='Ground truth', lw=0.9)
@@ -130,14 +130,14 @@ def spectra_reconstruction_report(wave, X_test_recon_orig, X_test_orig, X_pred_s
     
     plt.figure(figsize=(7,15))
     
-    obj_ids = [1,4,13,78]
+    obj_ids = [42,4,13,78]
     
     for i in np.arange(4):
     
         obj_id = obj_ids[i]
         plt.subplot(4,1,i+1)
         plt.plot(wave, X_test_recon_orig[obj_id], c='b', alpha=0.5, label='predicted spectrum')
-        plt.plot(wave, X_test_orig[obj_id], c='r', linestyle='--', alpha=0.8, label=r'data; $\log_{10}(M_{\bullet}/M_{\odot})$ ' + str(np.round(bhms[obj_id].item(),4)))
+        plt.plot(wave, X_test_orig[obj_id], c='r', linestyle='--', alpha=0.8, label=r'data; $\log_{10}(M_{\bullet}/M_{\odot}) = $ ' + str(np.round(bhms[obj_id].item(),4)))
         lower = X_test_recon_orig[obj_id] - 2*X_pred_sigma[obj_id]
         upper = X_test_recon_orig[obj_id] + 2*X_pred_sigma[obj_id]
         plt.fill_between(wave, lower, upper, color='b', alpha=0.3, label=r'$\pm2\sigma$')
@@ -145,6 +145,7 @@ def spectra_reconstruction_report(wave, X_test_recon_orig, X_test_orig, X_pred_s
         plt.ylabel('normalised flux')
         if i == 3:
             plt.xlabel(r'rest-frame wavelength [$\AA$]')
+        plt.suptitle('Spectra reconstruction')
 
 def plot_y_label_report(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, Y_test_sigma, snr_test):
     
@@ -172,29 +173,29 @@ def plot_y_label_report(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, Y_tes
     cbar.set_label('SNR')
     cbar.ax.tick_params(labelsize=9)
     
-def spectra_reconstruction_report(X_test_recon_orig, X_test_orig, X_test_pred_sigma):
+# def spectra_reconstruction_report(X_test_recon_orig, X_test_orig, X_test_pred_sigma):
     
-    fig = plt.figure(figsize=(12,5))
-    obj_ids = [1,2,4,7]
-    for i in np.arange(4):
+#     fig = plt.figure(figsize=(12,5))
+#     obj_ids = [1,2,4,7]
+#     for i in np.arange(4):
     
-        obj_id = obj_ids[i]
-        plt.subplot(1,4,i+1)
-        plt.plot(X_test_orig[obj_id], c='r', linestyle='--', alpha=0.8, label='Ground truth', lw=0.9)
-        plt.plot(X_test_recon_orig[obj_id], c='b', alpha=0.8, label='Predicted mean', lw=1)
-        lower = X_test_recon_orig[obj_id] - 2*X_test_pred_sigma[obj_id]
-        upper = X_test_recon_orig[obj_id] + 2*X_test_pred_sigma[obj_id]
-        plt.fill_between(np.arange(len(X_test_recon_orig.T)), lower, upper, color='k', alpha=0.3, label=r'$\pm2\sigma$')
-        plt.ylim(ymin=0)
-        if i == 0:
-            plt.legend(fontsize='small')
-        if i == 0:
-            plt.ylabel('Normalised Flux', fontsize='small')
-        plt.tick_params(axis='both', which='major', labelsize=8)
-        plt.xlabel('Rest-frame Wavelength', fontsize='small')
-    #plt.suplabel('normalised flux')
-    plt.tight_layout()
-    plt.suptitle('Quasar Spectra Reconstruction', fontsize='small')
+#         obj_id = obj_ids[i]
+#         plt.subplot(1,4,i+1)
+#         plt.plot(X_test_orig[obj_id], c='r', linestyle='--', alpha=0.8, label='Ground truth', lw=0.9)
+#         plt.plot(X_test_recon_orig[obj_id], c='b', alpha=0.8, label='Predicted mean', lw=1)
+#         lower = X_test_recon_orig[obj_id] - 2*X_test_pred_sigma[obj_id]
+#         upper = X_test_recon_orig[obj_id] + 2*X_test_pred_sigma[obj_id]
+#         plt.fill_between(np.arange(len(X_test_recon_orig.T)), lower, upper, color='k', alpha=0.3, label=r'$\pm2\sigma$')
+#         plt.ylim(ymin=0)
+#         if i == 0:
+#             plt.legend(fontsize='small')
+#         if i == 0:
+#             plt.ylabel('Normalised Flux', fontsize='small')
+#         plt.tick_params(axis='both', which='major', labelsize=8)
+#         plt.xlabel('Rest-frame Wavelength', fontsize='small')
+#     #plt.suplabel('normalised flux')
+#     plt.tight_layout()
+#     plt.suptitle('Quasar Spectra Reconstruction', fontsize='small')
 
 
     # for i, j  in zip(np.arange(6),[7,8,9,10,11,12]):

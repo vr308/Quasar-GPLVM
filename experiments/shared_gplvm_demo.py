@@ -1,45 +1,35 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Demo script for Shared GPLVM with split GPs
+Experiment script for Shared GPLVM with 
 
-TODO: 
-    
-    Test with MAP inference
-    Clean-up experiment scripts / model classes
-    
 """
-from models.shared_gplvm import SharedGPLVM, predict_joint_latent
-from models.latent_variable import PointLatentVariable, MAPLatentVariable
-from sklearn.model_selection import train_test_split
+### Packages
+
 import torch
-import pandas as pd
-import os 
+import os, gc
 import pickle as pkl
+import pandas as pd
 import numpy as np
-import gc
 from tqdm import trange
 from prettytable import PrettyTable
 import gpytorch
+from sklearn.model_selection import train_test_split
 from gpytorch.means import ConstantMean
 from gpytorch.mlls import VariationalELBO
+
+### Internal functions and modules
+
+from models.shared_gplvm import SharedGPLVM, predict_joint_latent
+from models.latent_variable import PointLatentVariable, MAPLatentVariable
 from models.likelihood import GaussianLikelihoodWithMissingObs, GaussianLikelihood
-from utils.load_data import load_spectra_labels, load_synthetic_labels_no_redshift
-from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, plot_partial_spectra_reconstruction_report, spectra_reconstruction_report
+from utils.load_data import load_spectra_labels, load_synthetic_labels
 from models.likelihood import GaussianLikelihoodWithMissingObs
-from utils.load_data import load_spectra_labels
 from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, spectra_reconstruction_report, plot_partial_spectra_reconstruction_report
 from utils.metrics import rmse_lum_bhm_edd, nll_lum_bhm_edd, rmse
-from models.likelihood import GaussianLikelihoodWithMissingObs
-from utils.load_data import load_spectra_labels
-from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, spectra_reconstruction_report, plot_partial_spectra_reconstruction_report
-from utils.metrics import rmse_lum_bhm_edd, nll_lum_bhm_edd, rmse
-
-## Import class and experiment configuration here
-
 from utils.config import hdu, BASE_SEED, latent_dim, test_size, num_inducing
 
-save_model = True
+save_model = False
 
 if __name__ == '__main__':
     
@@ -98,7 +88,7 @@ if __name__ == '__main__':
     ################  variational params and inducing inputs using the optimizer provided. ########
     
     loss_list = []
-    iterator = trange(5000, leave=True)
+    iterator = trange(8000, leave=True)
     batch_size = 128
 
     for i in iterator: 
@@ -258,7 +248,7 @@ if __name__ == '__main__':
     # X_train_pred_sigma = np.sqrt(vars_X_noisy)*std_X 
     # Y_train_pred_sigma = diags_Y*std_Y
 
-    ################ Testing ###################################################################################
+    ################ Testing #######################################################
     
     # Initialise test model at training params
    
@@ -269,31 +259,21 @@ if __name__ == '__main__':
         X_test = XY_test[::,0:-4]
         Y_test = XY_test[:,-4::]
         
-        X_test_orig = X_test.cpu()*std_X + means_X
-        Y_test_orig = Y_test.cpu()*std_Y + means_Y
+        X_test_orig = X_test*std_X + means_X
+        Y_test_orig = Y_test*std_Y + means_Y
         
         test_model = shared_model.initialise_model_test(len(Y_test), latent_dim).to(device)
 
-        test_loss, test_model, Z_test = predict_joint_latent(test_model, X_test, None, likelihood_spectra, likelihood_labels, lr=0.001, prior_z = None, steps = 2000)
+        test_loss, test_model, Z_test = predict_joint_latent(test_model, X_test, Y_test, likelihood_spectra, likelihood_labels, lr=0.0001, prior_z = None, steps = 8000)
 
-        X_test_recon, X_test_pred_covar = test_model.model_spectra.reconstruct_y(Z_test.Z, X_test, ae=False)
-        a, Y_test_recon, Y_test_pred_covar = test_model.model_labels.reconstruct_y(Z_test.Z, Y_test, ae=False)
+        a, X_test_recon, X_test_pred_covar = test_model.model_spectra.reconstruct_y(Z_test.Z[0:300], X_test, ae=False)
+        a, Y_test_recon, Y_test_pred_covar = test_model.model_labels.reconstruct_y(Z_test.Z[0:300], Y_test, ae=False)
         
-        #X_test_recon =  X_test_recon.T.detach().numpy()
-        #Y_test_recon =  Y_test_recon.T.detach().numpy()
-
-        test_model = shared_model.initialise_model_test(len(Y_test), latent_dim)
-        
-        if torch.cuda.is_available():
-            test_model = test_model.cuda()
-
-        test_loss, test_model, Z_test = predict_joint_latent(test_model, X_test, Y_test, likelihood_spectra, likelihood_labels, lr=0.005, prior_z = None, steps = 10000)
-
         #X_test_pred, X_test_recon, X_test_pred_covar = test_model.model_spectra.reconstruct_y(Z_test.Z, X_test, ae=False)
         #Y_test_pred, Y_test_recon, Y_test_pred_covar = test_model.model_labels.reconstruct_y(Z_test.Z, Y_test, ae=False)
         
-        X_test_pred = likelihood_spectra(test_model.model_spectra(Z_test.Z))
-        Y_test_pred = likelihood_labels(test_model.model_labels(Z_test.Z))
+        X_test_pred = likelihood_spectra(test_model.model_spectra(Z_test.Z[0:300]))
+        Y_test_pred = likelihood_labels(test_model.model_labels(Z_test.Z[0:300]))
         
         torch.cuda.empty_cache()
         gc.collect()
@@ -307,13 +287,13 @@ if __name__ == '__main__':
         Y_test_recon =  Y_test_recon.T.cpu().detach().numpy()
         
         X_test_recon_orig = X_test_recon.T*std_X + means_X
-        Y_test_recon_orig = Y_test_recon.T*std_Y + means_Y
+        Y_test_recon_orig = torch.Tensor(Y_test_recon.T).cuda()*std_Y + means_Y
         
         vars_X_noiseless = np.array([(m.diag()).cpu().detach().numpy() for m in X_test_pred_covar]).T ## extracting diagonals per dimensions
         vars_X_noisy = np.array([m + likelihood_spectra.noise_covar.noise.flatten().cpu().detach().numpy() for m in vars_X_noiseless])
     
         diags_Y_list = [m.diag().sqrt() for m in Y_test_pred_covar]
-        diags_Y = torch.cat(diags_Y_list).reshape(len(Y_test),4)
+        diags_Y = torch.cat(diags_Y_list).reshape(len(Y_test_recon.T),4)
         
         X_test_pred_sigma = np.sqrt(vars_X_noisy)*std_X.cpu().numpy()
         Y_test_pred_sigma = diags_Y*std_Y
@@ -325,20 +305,20 @@ if __name__ == '__main__':
         plot_spectra_reconstructions(wave, X_test_recon_orig, X_test_orig, X_test_pred_sigma, obj_id=78)
         plot_spectra_reconstructions(wave, X_test_recon_orig, X_test_orig, X_test_pred_sigma, obj_id=93)
         
-        spectra_reconstruction_report(wave, X_test_recon_orig, X_test_orig, X_test_pred_sigma, Y_test_orig[:,1])
+        spectra_reconstruction_report(wave, X_test_recon_orig, X_test_orig, X_test_pred_sigma, Y_test_orig[:,2])
 
         #plot_spectra_samples(X_test_recon_orig, X_test_orig, X_test)
         
     ###### Simulate spectra for varying properties #####################################
     
-    Y_synthetic_lumin, Y_synthetic_bhm, Y_synthetic_edd = load_synthetic_labels_no_redshift(Y_test, Y_test_orig, means_Y, std_Y, device)
+    Y_synthetic_lumin, Y_synthetic_bhm, Y_synthetic_edd, Y_sigma = load_synthetic_labels(Y_test, Y_test_orig, means_Y, std_Y, Y_ivar, device)
     
     ## bhm
     
     test_model_bhm = shared_model.initialise_model_test(len(Y_synthetic_bhm), latent_dim).to(device)
-    test_loss_bhm, test_model_bhm, Z_test_bhm = predict_joint_latent(test_model_bhm, None, Y_synthetic_bhm, likelihood_spectra, likelihood_labels, lr=0.001, prior_z = None, steps = 5000)
+    test_loss_bhm, test_model_bhm, Z_test_bhm = predict_joint_latent(test_model_bhm, None, Y_synthetic_bhm, likelihood_spectra, likelihood_labels, lr=0.01, prior_z = None, steps = 2000)
     
-    X_test_recon_bhm, X_test_pred_covar_bhm = test_model_bhm.model_spectra.reconstruct_y(Z_test_bhm.Z[0:100], X_test[0:100], ae=False)
+    a, X_test_recon_bhm, X_test_pred_covar_bhm = test_model_bhm.model_spectra.reconstruct_y(Z_test_bhm.Z[0:100], X_test[0:100], ae=False)
     X_test_recon_orig_bhm = X_test_recon_bhm.T*std_X + means_X
     Y_test_recon_orig_bhm = Y_synthetic_bhm*std_Y + means_Y
     
@@ -349,9 +329,9 @@ if __name__ == '__main__':
     ## Lumin
     
     test_model_lumin = shared_model.initialise_model_test(len(Y_synthetic_lumin), latent_dim).to(device)
-    test_loss_lumin, test_model_lumin, Z_test_lumin = predict_joint_latent(test_model_lumin, None, Y_synthetic_lumin, likelihood_spectra, likelihood_labels, lr=0.0001, prior_z = None, steps = 200)
+    test_loss_lumin, test_model_lumin, Z_test_lumin = predict_joint_latent(test_model_lumin, None, Y_synthetic_lumin, likelihood_spectra, likelihood_labels, lr=0.01, prior_z = None, steps = 2000)
     
-    X_test_recon_lumin, X_test_pred_covar_lumin = test_model_lumin.model_spectra.reconstruct_y(Z_test_lumin.Z[0:100], X_test[0:100], ae=False)
+    a, X_test_recon_lumin, X_test_pred_covar_lumin = test_model_lumin.model_spectra.reconstruct_y(Z_test_lumin.Z[0:100], X_test[0:100], ae=False)
     X_test_recon_orig_lumin = X_test_recon_lumin.T*std_X + means_X
     Y_test_recon_orig_lumin = Y_synthetic_lumin*std_Y + means_Y
     
@@ -362,11 +342,15 @@ if __name__ == '__main__':
     ## Edd
 
     test_model_edd = shared_model.initialise_model_test(len(Y_synthetic_edd), latent_dim).to(device)
-    test_loss_edd, test_model_edd, Z_test_edd = predict_joint_latent(test_model_edd, None, Y_synthetic_edd, likelihood_spectra, likelihood_labels, lr=0.01, prior_z = None, steps = 5000)
+    test_loss_edd, test_model_edd, Z_test_edd = predict_joint_latent(test_model_edd, None, Y_synthetic_edd, likelihood_spectra, likelihood_labels, lr=0.001, prior_z = None, steps = 4000)
 
-    X_test_recon_edd, X_test_pred_covar_edd = test_model_edd.model_spectra.reconstruct_y(Z_test_edd.Z[0:100], X_test[0:100], ae=False)
+    a, X_test_recon_edd, X_test_pred_covar_edd = test_model_edd.model_spectra.reconstruct_y(Z_test_edd.Z[0:100], X_test[0:100], ae=False)
     X_test_recon_orig_edd = X_test_recon_edd.T*std_X + means_X
     Y_test_recon_orig_edd = Y_synthetic_edd*std_Y + means_Y
+    
+    vars_X_noiseless = np.array([(m.diag()).cpu().detach().numpy() for m in X_test_pred_covar_edd]).T ## extracting diagonals per dimensions
+    vars_X_noisy = np.array([m + likelihood_spectra.noise_covar.noise.flatten().cpu().detach().numpy() for m in vars_X_noiseless])
+ 
     
     # ## red
     
@@ -394,14 +378,15 @@ if __name__ == '__main__':
     import matplotlib
     import matplotlib.pylab as plt
     
-    parameters = np.array(Y_test_recon_orig_lumin[:,0].cpu().detach())
+    parameters = np.array(Y_orig_synthetic_bhm[:,2].cpu().detach())
     
+    parameters = np.array(Y_orig_synthetic_edd[:,3])
     norm = matplotlib.colors.Normalize(
     vmin=np.min(parameters),
     vmax=np.max(parameters))
 
     # choose a colormap
-    c_m = matplotlib.cm.spring
+    c_m = matplotlib.cm.viridis
     
     # create a ScalarMappable and initialize a data structure
     s_m = matplotlib.cm.ScalarMappable(cmap=c_m, norm=norm)
@@ -409,17 +394,19 @@ if __name__ == '__main__':
     
     for i in np.arange(100):
         
-        plt.plot(wave, X_test_recon_orig_lumin[i].cpu().detach(), color=s_m.to_rgba(parameters[i]))
+        #plt.plot(wave, X_test_recon_orig_edd[i].cpu().detach(), color=s_m.to_rgba(parameters[i]))
+        plt.plot(wave, edd_spectra[i][0:586], color=s_m.to_rgba(parameters[i]), label=str(i))
     
-    plt.errorbar(wave, X_test_recon_orig_lumin.cpu().detach().mean(dim=0), yerr=np.sqrt(vars_X_noisy.mean(axis=0))*2, alpha=0.3)
+    #plt.errorbar(wave, X_test_recon_orig_edd.cpu().detach().mean(dim=0), yerr=np.sqrt(vars_X_noisy.mean(axis=0))*2, alpha=0.2, color='k')
+    plt.errorbar(wave, edd_spectra.mean(axis=0)[0:586], yerr=np.sqrt(vars_X_noisy.mean(axis=0))*2, alpha=0.1, color='k')
     
     # having plotted the 11 curves we plot the colorbar, using again our
     # ScalarMappable
     cbar = plt.colorbar(s_m)
-    cbar.set_label('Luminosity')
+    cbar.set_label('Eddington ratio')
     plt.ylabel('Normalised Flux')
     plt.xlabel('Restframe wavelength')
-    plt.title('Spectra  generated for simulated Luminosity')
+    plt.title('Spectra  generated for simulated Eddington ratio')
 
 
     ################## Partial observation region (Spectra reconstruction) ####################################################
@@ -440,9 +427,9 @@ if __name__ == '__main__':
     
     #Z_latent = torch.Tensor(test_model.Z.Z)[idx].repeat(4).reshape(4,10)
     test_model = shared_model.initialise_model_test(4, latent_dim).to(device)
-    test_point_Y = Y_test[idx].repeat(4).reshape(4,3).to(device)
+    test_point_Y = Y_test[idx].repeat(4).reshape(4,4).to(device)
 
-    test_loss, test_model, Z_partial = predict_joint_latent(test_model, test_point_X, test_point_Y, likelihood_spectra, likelihood_labels, lr=0.001, prior_z = None, steps = 200, batch_size=4)
+    test_loss, test_model, Z_partial = predict_joint_latent(test_model, test_point_X, test_point_Y, likelihood_spectra, likelihood_labels, lr=0.001, prior_z = None, steps = 2000, batch_size=4)
     X_partial_recon, X_partial_pred_covar = shared_model.model_spectra.reconstruct_y(Z_partial.Z, test_point_X, ae=False)
 
     X_partial_recon_orig = X_partial_recon.T*std_X + means_X
@@ -615,17 +602,18 @@ if __name__ == '__main__':
     ylabel_edd = r'Predicted $\log_{10}\lambda_{\mathrm{Edd}}$'
     edd_title = 'Eddington Ratio'
      
-  
+    c = snr_test[0:200]
+    
     plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma,  \
                             col_id = 0, title=lumin_title, 
-                            colors=Y_test_orig[:,0].cpu().detach(), \
+                            colors=snr_test, \
                             clabel = None,
                             xlabel = xlabel_lumin, \
                             ylabel = ylabel_lumin, \
                             cmap= 'spring')
         
-    plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, \
-                            col_id = 1, title=bhm_title, colors=Y_test_orig[:,1].cpu().detach(), \
+    plot_y_label_comparison(Y_test_recon_orig, Y_test_orig[0:200], Y_test_pred_sigma, \
+                            col_id = 2, title=bhm_title, colors=c, \
                             clabel = None,
                             xlabel = xlabel_bhm, \
                             ylabel = ylabel_bhm, \
@@ -638,7 +626,7 @@ if __name__ == '__main__':
                             ylabel = ylabel_edd, \
                             cmap= 'summer')
         
-    c = snr[ids]
+    
         
     plot_y_label_comparison(Y_train_recon_orig, Y_train_orig, Y_train_pred_sigma, \
                             col_id = 1, title=lumin_title,  colors=c, 

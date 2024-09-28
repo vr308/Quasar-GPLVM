@@ -8,8 +8,6 @@ Load data functions
 import pickle
 import numpy as np
 import torch
-from utils.config import size
-#from astropy.io import fits
 
 # 1k dataset -> 'data/data_norm_sdss16_SNR10_random_1.fits'
 # 20k dataset -> 'data/data_HST_1220_5000_2A.pickle'
@@ -85,7 +83,7 @@ def load_spectra_labels(hdu):
     X[masks == 0.] = np.nan
     X_ivar[masks == 0.] = np.nan
     
-    if size == '20k':
+    if X.shape[0] > 1000:
         # slice at wave = 1216
         X = X[:,wave > 1216]
         wave = wave[wave > 1216]

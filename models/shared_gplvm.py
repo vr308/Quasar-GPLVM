@@ -1,31 +1,25 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Shared GPLVM Model classes - testing something out here3
+Shared GPLVM Model classes 
 
 """
-from models.gplvm import BayesianGPLVM
-from models.latent_variable import PointLatentVariable, MAPLatentVariable, GaussianLatentVariable
+from models.latent_variable import PointLatentVariable, MAPLatentVariable, GaussianLatentVariable, Masked_NNEncoder
 import torch
-import os
-import pickle as pkl
 import numpy as np
 from tqdm import trange
 from prettytable import PrettyTable
 import gpytorch
+from gpytorch.models import ApproximateGP
 from gpytorch.means import ConstantMean
 from gpytorch.mlls import VariationalELBO
 from gpytorch.priors import NormalPrior, MultivariateNormalPrior
-from gpytorch.likelihoods import GaussianLikelihood
 from gpytorch.variational import VariationalStrategy
 from gpytorch.variational import CholeskyVariationalDistribution
-from gpytorch.kernels import ScaleKernel, RBFKernel, RQKernel
+from gpytorch.kernels import ScaleKernel, RBFKernel
 from gpytorch.distributions import MultivariateNormal
-from models.likelihood import GaussianLikelihoodWithMissingObs
-from utils.load_data import load_joint_spectra_labels_small, load_spectra_labels
-from utils.visualisation import plot_spectra_reconstructions, plot_y_label_comparison, plot_partial_spectra_reconstruction_report
 
-class QuasarDemoModel(BayesianGPLVM):
+class QuasarModel(ApproximateGP):
      def __init__(self, Z, n, data_dim, latent_dim, n_inducing, inducing_inputs):
          
         self.n = n
@@ -36,7 +30,7 @@ class QuasarDemoModel(BayesianGPLVM):
         q_u = CholeskyVariationalDistribution(n_inducing, batch_shape=self.batch_shape) 
         q_f = VariationalStrategy(self, inducing_inputs, q_u, learn_inducing_locations=False)
     
-        super(QuasarDemoModel, self).__init__(Z, q_f)
+        super(QuasarModel, self).__init__(q_f)
         
         # Kernel 
         self.shared_inducing_inputs = inducing_inputs
@@ -54,6 +48,12 @@ class QuasarDemoModel(BayesianGPLVM):
         covar_z = self.covar_module(Z)
         dist = MultivariateNormal(mean_z, covar_z)
         return dist
+    
+     def reconstruct(self, Z):
+            # Just decode from the Z that is passed
+            # Returns a batch of multivariate-normals 
+            y_pred = self(Z)
+            return y_pred, y_pred.loc, y_pred.covariance_matrix
 
 class SharedGPLVM(gpytorch.Module):
     
@@ -63,6 +63,7 @@ class SharedGPLVM(gpytorch.Module):
 
         self.n = n
         self.latent_dim = latent_dim
+        self.data_dim = spectra_dim + label_dim
         
         # Define prior for Z
 
@@ -85,12 +86,19 @@ class SharedGPLVM(gpytorch.Module):
             prior_z = NormalPrior(Z_prior_mean, torch.ones_like(Z_prior_mean))
             Z = GaussianLatentVariable(Z_init, prior_z, data_dim=594)
             
+        elif latent_config == 'nn_encoder':
+            
+            nn_layers = (15,12)
+            embedding_dim = self.data_dim
+            prior_z = MultivariateNormalPrior(Z_prior_mean, torch.eye(Z_prior_mean.shape[1]))
+            #prior_x_test = MultivariateNormalPrior(X_prior_mean_test, torch.eye(X_prior_mean.shape[1]))
+            Z = Masked_NNEncoder(self.n, latent_dim, prior_z, self.data_dim, embedding_dim, layers=nn_layers)
+            
         self.Z = Z
         self.inducing_inputs = torch.nn.Parameter(torch.randn(n_inducing, latent_dim))#.to(device)
-        self.model_spectra = QuasarDemoModel(self.Z, n, spectra_dim, latent_dim, n_inducing, self.inducing_inputs)
-        self.model_labels = QuasarDemoModel(self.Z, n, label_dim, latent_dim, n_inducing, self.inducing_inputs)
+        self.model_spectra = QuasarModel(self.Z, n, spectra_dim, latent_dim, n_inducing, self.inducing_inputs)
+        self.model_labels = QuasarModel(self.Z, n, label_dim, latent_dim, n_inducing, self.inducing_inputs)
         
-
      def _get_batch_idx(self, batch_size):
             
          valid_indices = np.arange(self.n)
@@ -122,8 +130,9 @@ class SharedGPLVM(gpytorch.Module):
         
         Z_init_test = torch.nn.Parameter(torch.randn(self.n, latent_dim))
 
-        self.model_spectra.Z.reset(Z_init_test)
-        self.model_labels.Z.reset(Z_init_test)
+        #self.model_spectra.Z.reset(Z_init_test)
+        #self.model_labels.Z.reset(Z_init_test)
+        self.Z.reset(Z_init_test)
         
         return self
     
@@ -150,8 +159,8 @@ def predict_joint_latent(test_model, X_test, Y_test, likelihood_spectra, likelih
            joint_loss = 0.0
            batch_index = test_model._get_batch_idx(batch_size)
            test_optimizer.zero_grad()
-           sample = test_model.Z.Z  # a full sample returns latent Z across all N
-           sample_batch = sample[batch_index]
+           sample_batch = test_model.Z.Z[batch_index]  # a full sample returns latent Z across all N
+           #sample_batch = sample[batch_index]
            
            ### Getting the output of the two groups of GPs
            
