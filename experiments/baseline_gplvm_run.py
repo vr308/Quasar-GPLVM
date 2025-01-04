@@ -19,7 +19,7 @@ from gpytorch.mlls import VariationalELBO
 
 from models.baseline_gplvm import QuasarModel, predict_latent
 from utils.load_data import load_spectra_labels
-from utils.predict_reconstruct import predict_from_latents_baseline
+from utils.predict_reconstruct import decode_from_latents_baseline
 from models.likelihood import GaussianLikelihoodWithMissingObs
 from utils.metrics import mean_absolute_error_spectra, mean_absolute_error_labels, nll_lum_bhm_edd
 
@@ -131,51 +131,68 @@ def run_experiment(seed, hdu, size, iterations, num_inducing, latent_dim):
     
     X_test_orig_cpu = X_test_orig.cpu().detach()
     Y_test_orig_cpu = Y_test_orig.cpu().detach()
+    
+    modes = ['full', 'only_spectra']
+    
+    for i in modes:
+        
+        if i == 'full':
+            
+            test_model = baseline_model.initialise_model_test(len(Y_test), latent_dim).to(device)
 
-    test_model = baseline_model.initialise_model_test(len(Y_test), latent_dim).to(device)
+            test_loss, test_model, Z_test = predict_latent(test_model, XY_test, 
+                                                             likelihood, lr=0.001, prior_z = None, steps = 14000)
+        elif i == 'only_spectra':
+            
+            test_model = baseline_model.initialise_model_test(len(Y_test), latent_dim).to(device)
+            
+            XY_test_no_labels = XY_test.clone()
+            XY_test_no_labels[:,586::]= torch.nan
+            test_loss, test_model, Z_test = predict_latent(test_model, XY_test_no_labels, 
+                                                           likelihood, lr=0.001, prior_z = None, steps = 14000)
+            
+        X_test_recon_cpu, Y_test_recon_cpu, X_test_recon_sigma, Y_test_recon_sigma = decode_from_latents_baseline(Z_test.Z, test_model, likelihood)
+        
+        X_test_recon_orig_cpu = X_test_recon_cpu*std_X.cpu() + means_X.cpu()
+        Y_test_recon_orig_cpu = Y_test_recon_cpu*std_Y.cpu() + means_Y.cpu()
+        
+        Y_test_recon_var = Y_test_recon_sigma**2
+        noise_variance_per_label = likelihood.noise_covar.noise.flatten()[-4::].cpu()
+     
+        ############ Collect training metrics RMSE and NLL for spectra, bhm, lumin and edd ##############
+        
+        print('-----------Saving metrics----------------')
+    
+        #X_train_orig = X_train*std_X + means_X
+        #Y_train_orig = Y_train*std_Y + means_Y
+        
+        #X_train_cpu = X_train.cpu().detach()
+        #X_train_orig_cpu = X_train_orig.cpu().detach()
+        
+        #Y_train_cpu = Y_train.cpu().detach()
+        #Y_train_orig_cpu = Y_train_orig.cpu().detach()
+        
+        #mae_train_spectra = mean_absolute_error_spectra(X_train_orig_cpu, X_train_recon_orig_cpu)
+        #mae_train_labels = mean_absolute_error_labels(Y_train_orig_cpu, Y_train_recon_orig_cpu)
+        
+        mae_test_spectra = mean_absolute_error_spectra(X_test_orig_cpu, X_test_recon_orig_cpu)
+        mae_test_labels = mean_absolute_error_labels(Y_test_orig_cpu, Y_test_recon_orig_cpu)
+        nlpd_labels = nll_lum_bhm_edd(Y_test_recon_cpu, Y_test_recon_var, Y_test.cpu(), std_Y.cpu(), noise_variance_per_label)
+        
+        ####### Save metrics to json file ##########
+        
+        file_path = 'results/metrics_baseline' + str(seed) + '_' + str(size) + '_' + i + '.json'
 
-    test_loss, test_model, Z_test = predict_latent(test_model, XY_test, 
-                                                         likelihood, lr=0.001, prior_z = None, steps = iterations)
-
-    X_test_recon_cpu, Y_test_recon_cpu, X_train_recon_sigma, Y_train_recon_sigma, X_pred, Y_pred = predict_from_latents_baseline(Z_test.Z, XY_test, test_model, likelihood, std_X, std_Y)
-    
-    X_test_recon_orig_cpu = X_test_recon_cpu*std_X.cpu() + means_X.cpu()
-    Y_test_recon_orig_cpu = Y_test_recon_cpu*std_Y.cpu() + means_Y.cpu()
- 
-    ############ Collect training metrics RMSE and NLL for spectra, bhm, lumin and edd ##############
-    
-    print('-----------Saving metrics----------------')
-
-    #X_train_orig = X_train*std_X + means_X
-    #Y_train_orig = Y_train*std_Y + means_Y
-    
-    #X_train_cpu = X_train.cpu().detach()
-    #X_train_orig_cpu = X_train_orig.cpu().detach()
-    
-    #Y_train_cpu = Y_train.cpu().detach()
-    #Y_train_orig_cpu = Y_train_orig.cpu().detach()
-    
-    #mae_train_spectra = mean_absolute_error_spectra(X_train_orig_cpu, X_train_recon_orig_cpu)
-    #mae_train_labels = mean_absolute_error_labels(Y_train_orig_cpu, Y_train_recon_orig_cpu)
-    
-    mae_test_spectra = mean_absolute_error_spectra(X_test_orig_cpu, X_test_recon_orig_cpu)
-    mae_test_labels = mean_absolute_error_labels(Y_test_orig_cpu, Y_test_recon_orig_cpu)
-    nlpd_labels = nll_lum_bhm_edd(Y_pred, Y_test, std_Y)
-    
-    ####### Save metrics to json file ##########
-    
-    file_path = 'results/metrics_baseline' + str(seed) + '_' + str(size) + '.json'
-    
-    metrics = {
-    #    'train_mae_spectra': [mae_train_spectra.item()],
-    #    'train_mae_labels': mae_train_labels.numpy().tolist(),
-        'test_mae_spectra': [mae_test_spectra.item()],
-        'test_mae_labels': mae_test_labels.numpy().tolist(),
-        'test_nlpd_labels': nlpd_labels.tolist()
-        }
-    
-    with open(file_path, 'w') as file:
-        json.dump(metrics, file, indent=4)
+        metrics = {
+        #    'train_mae_spectra': [mae_train_spectra.item()],
+        #    'train_mae_labels': mae_train_labels.numpy().tolist(),
+            'test_mae_spectra': [mae_test_spectra.item()],
+            'test_mae_labels': mae_test_labels.numpy().tolist(),
+            'test_nlpd_labels': nlpd_labels.tolist()
+            }
+        
+        with open(file_path, 'w') as file:
+            json.dump(metrics, file, indent=4)
         
 
 def main():
@@ -186,8 +203,8 @@ def main():
     # Define arguments
     
     parser.add_argument('--num_seeds', type=int, default=5)
-    parser.add_argument('--data_size', type=str, default='1k')
-    parser.add_argument('--iterations', type=int, help='Number of iterations', default=8000)
+    parser.add_argument('--data_size', type=str, default='20k')
+    parser.add_argument('--iterations', type=int, help='Number of iterations', default=11000)
     parser.add_argument('--num_inducing', type=int, help='Number of inducing points', default=120)
     parser.add_argument('--latent_dim', type=int, help='Number of latent dimensions', default=10)
 
@@ -213,9 +230,9 @@ def main():
     
     print(f"Run an experiment with {num_seeds} seeds, data size {size}, iterations {iterations} num_inducing {num_inducing} latent_dim {latent_dim}")
     
-    random_seeds = [24, 42,33,60,6]
+    random_seeds = [33]
     
-    for i in range(num_seeds):
+    for i in range(len(random_seeds)):
         
         # Run the experiment with the parsed arguments
         seed = random_seeds[i] 

@@ -44,9 +44,9 @@ if __name__ == '__main__':
     
     X, Y, means_X, std_X, means_Y, std_Y, X_ivar, Y_ivar, snr, wave  = load_spectra_labels(hdu)
 
-    data = np.hstack((X,Y))[0:15000]
+    data = np.hstack((X,Y))
     
-    XY_train, XY_test, train_idx, test_idx = train_test_split(data, np.arange(len(data)), test_size=test_size, random_state=BASE_SEED)
+    XY_train, XY_test, train_idx, test_idx = train_test_split(data, np.arange(len(data)), test_size=0.1, random_state=BASE_SEED)
     snr_test = snr[test_idx]
 
     XY_train = torch.Tensor(XY_train).to(device)
@@ -88,7 +88,7 @@ if __name__ == '__main__':
     ################  variational params and inducing inputs using the optimizer provided. ########
     
     loss_list = []
-    iterator = trange(8000, leave=True)
+    iterator = trange(2000, leave=True)
     batch_size = 128
 
     for i in iterator: 
@@ -604,27 +604,24 @@ if __name__ == '__main__':
      
     c = snr_test[0:200]
     
-    plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma,  \
-                            col_id = 0, title=lumin_title, 
+    plot_y_label_comparison(Y_test_recon_orig_cpu, Y_test_orig, Y_test_recon_sigma,  \
+                            col_id = 1, title=lumin_title, 
                             colors=snr_test, \
                             clabel = None,
                             xlabel = xlabel_lumin, \
-                            ylabel = ylabel_lumin, \
-                            cmap= 'spring')
+                            ylabel = ylabel_lumin)
         
-    plot_y_label_comparison(Y_test_recon_orig, Y_test_orig[0:200], Y_test_pred_sigma, \
-                            col_id = 2, title=bhm_title, colors=c, \
+    plot_y_label_comparison(Y_test_recon_orig_cpu, Y_test_orig, Y_test_recon_sigma, \
+                            col_id = 2, title=bhm_title, colors=snr_test, \
                             clabel = None,
                             xlabel = xlabel_bhm, \
-                            ylabel = ylabel_bhm, \
-                            cmap= 'jet')
+                            ylabel = ylabel_bhm)
         
     plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, \
-                            col_id = 2, title=edd_title,  colors=Y_test_orig[:,2].cpu().detach(), 
+                            col_id = 3, title=edd_title,  colors=Y_test_orig[:,2].cpu().detach(), 
                             clabel = None,
                             xlabel = xlabel_edd, \
-                            ylabel = ylabel_edd, \
-                            cmap= 'summer')
+                            ylabel = ylabel_edd)
         
     
         
@@ -648,7 +645,119 @@ if __name__ == '__main__':
                             xlabel = xlabel_edd, \
                             ylabel = ylabel_edd, \
                             cmap= 'jet')    
- 
+        
+     ###### SNR vs. Error
+         
+     snr_test = snr[test_idx]
+     
+     valid_indices = ~torch.isnan(Y_test[:,3]).cpu() # Get indices where edd_error is not NaN
+     snr_test_clean = np.array(snr_test)[valid_indices.numpy()]
+     
+     lumin_error = np.abs(Y_test_recon_orig_cpu[:,1] - Y_test_orig[:,1].cpu())[valid_indices]
+     bhm_error = np.abs(Y_test_recon_orig_cpu[:,2] - Y_test_orig[:,2].cpu())[valid_indices]
+     edd_error = np.abs(Y_test_recon_orig_cpu[:,3] - Y_test_orig[:,3].cpu())[valid_indices]
+     
+     
+     plt.figure(figsize=(14,8))
+     
+     plt.subplot(131)
+     plt.plot(snr_test_clean, lumin_error, 'o',color='blue', alpha=0.8)
+     plt.xlabel('SNR')
+     plt.ylabel('Mean Abs. error')
+     plt.title('Bolometric Luminosity')
+     plt.subplot(132)
+     plt.plot(snr_test_clean, bhm_error,'o', color='green', alpha=0.8)
+     plt.xlabel('SNR')
+     plt.ylabel('Mean Abs. error')
+     plt.title('Black hole mass')
+
+     plt.subplot(133)
+     plt.plot(snr_test_clean, edd_error,'o', color='red', alpha=0.8)
+     plt.xlabel('SNR')
+     plt.ylabel('Mean Abs. error')
+     plt.title('Eddington Ratio')
+     
+     from scipy.stats import binned_statistic
+     
+     plt.figure(figsize=(14,8))
+
+     num_bins = 8
+     bins = np.linspace(min(snr_test_clean), max(snr_test_clean), num_bins + 1)
+     lumin_error_bins, bin_edges, _ = binned_statistic(np.array(snr_test_clean), lumin_error, statistic="mean", bins=bins)
+     lumin_var, bin_edges, _ = binned_statistic(np.array(snr_test_clean), lumin_error, statistic="std", bins=bins)
+     #lumin_count, bin_edges, _ = binned_statistic(np.array(snr_test_clean), lumin_error, statistic="count", bins=bins)
+
+     lumin_error_bin_centers = (bins[:-1] + bins[1:]) / 2  # Bin centers for plotting
+     plt.subplot(131)
+
+     plt.plot(lumin_error_bin_centers, lumin_error_bins,'o-', color='orange')
+     plt.errorbar(lumin_error_bin_centers, lumin_error_bins, yerr = lumin_var,capsize=10, barsabove=True)
+     plt.xlabel('SNR')
+     plt.ylabel('Mean Abs. error')
+     plt.title('Bolometric Luminosity')
+     
+     num_bins = 8
+     bins = np.linspace(min(snr_test_clean), max(snr_test_clean), num_bins + 1)
+     bhm_error_bins, bin_edges, _ = binned_statistic(np.array(snr_test_clean), bhm_error, statistic="mean", bins=bins)
+     bhm_var, bin_edges, _ = binned_statistic(np.array(snr_test_clean), bhm_error, statistic="std", bins=bins)
+     #lumin_count, bin_edges, _ = binned_statistic(np.array(snr_test_clean), lumin_error, statistic="count", bins=bins)
+    
+     bhm_error_bin_centers = (bins[:-1] + bins[1:]) / 2  # Bin centers for plotting
+     plt.subplot(132)
+
+     plt.plot(bhm_error_bin_centers, bhm_error_bins,'o-', color='orange')
+     plt.errorbar(bhm_error_bin_centers, bhm_error_bins, yerr = bhm_var,capsize=10,barsabove=True)
+     plt.xlabel('SNR')
+     plt.ylabel('Mean abs. error')
+     plt.title('Black hole mass')
+
+     
+     num_bins = 8
+     bins = np.linspace(min(snr_test_clean), max(snr_test_clean), num_bins + 1)
+     edd_error_bins, bin_edges, _ = binned_statistic(np.array(snr_test_clean), edd_error, statistic="mean", bins=bins)
+     edd_var, bin_edges, _ = binned_statistic(np.array(snr_test_clean), edd_error, statistic="std", bins=bins)
+     #lumin_count, bin_edges, _ = binned_statistic(np.array(snr_test_clean), lumin_error, statistic="count", bins=bins)
+    
+     edd_error_bin_centers = (bins[:-1] + bins[1:]) / 2  # Bin centers for plotting
+     plt.subplot(133)
+
+     plt.plot(edd_error_bin_centers, edd_error_bins,'o-', color='orange')
+     plt.errorbar(edd_error_bin_centers, edd_error_bins, yerr = edd_var, barsabove=True, capsize=10)
+     plt.xlabel('SNR')
+     plt.ylabel('Mean abs. error')
+     plt.title('Eddington Ratio')
+
+     
+     
+     ############ Counts in each bin ################
+     
+     
+
+     ##### Calibration - predictive uncertainties vs. error
+     
+     from scipy.stats import binned_statistic
+     
+     uncertainty = np.array(Y_test_recon_sigma[:,1])
+
+     num_bins = 5
+     bins = np.linspace(min(edd_error), max(edd_error), num_bins + 1)
+     #mean_uncertainty, _, _ = binned_statistic(adjusted_uncertainty, adjusted_uncertainty, statistic="mean", bins=bins)
+     mean_uncertainty, bin_edges, _ = binned_statistic(np.array(edd_error), uncertainty, statistic="mean", bins=bins)
+     mean_error_bin_centers = (bins[:-1] + bins[1:]) / 2  # Bin centers for plotting
+
+     # Plot calibration curve
+     plt.figure(figsize=(8, 8))
+     plt.bar(np.arange(len(mean_uncertainty)), mean_uncertainty)
+     plt.plot(np.arange(len(mean_uncertainty)), mean_uncertainty,'o-', color='orange')
+     plt.xticks(np.arange(len(mean_uncertainty)), np.round(mean_error_bin_centers,4))
+
+     #plt.plot(mean_uncertainty, mean_uncertainty, "k--", label="Perfect Calibration (y=x)")
+     plt.ylabel(r"Predicted Uncertainty (1$\sigma$)")
+     plt.xlabel("Binned Mean Absolute Error")
+     plt.title("Eddington Ratio")
+     plt.show()
+     
+
  #    # ####################### Visualisation: Reconstructing spectra and labels ################################
     
  #    # # plt.plot(np.isnan(XY_train).sum(axis=0)) ## check the presence of the data 

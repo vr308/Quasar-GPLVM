@@ -49,11 +49,11 @@ def plot_partial_spectra_reconstruction_report(wave, X_partial_recon_orig, X_tes
             plt.xlabel(r'rest-frame wavelength [$\AA$]')
         plt.suptitle('Quasar Spectra Reconstruction [from partial observations]')
 
-def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_var, col_id, title, colors, clabel, xlabel, ylabel, cmap):
+def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_var, col_id, title, colors, clabel, xlabel, ylabel):
     
     plt.figure()
-    plt.scatter(Y_test_orig[:,col_id].cpu().detach(), Y_test_recon_orig[:,col_id].cpu().detach(), c=colors, cmap=cmap)
-    plt.errorbar(Y_test_orig[:,col_id].cpu().detach(), Y_test_recon_orig[:,col_id].cpu().detach(), c='peru', alpha=0.5, yerr=1*Y_test_pred_var[:,col_id].cpu().detach(), fmt='None')
+    plt.scatter(Y_test_orig[:,col_id].cpu().detach(), Y_test_recon_orig[:,col_id].cpu().detach(), c=colors, cmap='jet')
+    #plt.errorbar(Y_test_orig[:,col_id].cpu().detach(), Y_test_recon_orig[:,col_id].cpu().detach(), c='peru', alpha=0.5, yerr=1*Y_test_pred_var[:,col_id].cpu().detach(), fmt='None')
     xpoints = ypoints = plt.xlim()
     plt.plot(xpoints, ypoints, linestyle='--', color='k',alpha=0.7, scalex=False, scaley=False)
     #plt.plot(np.arange(5), np.arange(5),'--',c='k', alpha=0.7)
@@ -77,19 +77,19 @@ def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_var, col
         #     plt.xlabel('Rest-frame wavelength', fontsize='small')
 
 
-def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, Y_test_sigma, snr_test, col_id, title):
+# def plot_y_label_comparison(Y_test_recon_orig, Y_test_orig, Y_test_pred_sigma, Y_test_sigma, snr_test, col_id, title):
     
-    plt.figure()
-    plt.scatter(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], c=snr_test,cmap='jet')
-    plt.errorbar(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], yerr=Y_test_pred_sigma[:,col_id], fmt='None', color='k', alpha=0.2, errorevery=1)
-    plt.errorbar(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], xerr=2*Y_test_sigma[:,col_id], fmt='None', color='k', alpha=0.4, errorevery=1)
-    xpoints = ypoints = plt.xlim()
-    plt.plot(xpoints, ypoints, linestyle='--', color='k',alpha=0.7, scalex=False, scaley=False)
-    plt.ylabel(r'Predicted ', fontsize='large')
-    plt.xlabel(r'Measured ', fontsize='large')
-    plt.title(title)
-    cbar = plt.colorbar()
-    cbar.set_label('SNR')
+#     plt.figure()
+#     plt.scatter(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], c=snr_test,cmap='jet')
+#     plt.errorbar(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], yerr=Y_test_pred_sigma[:,col_id], fmt='None', color='k', alpha=0.2, errorevery=1)
+#     plt.errorbar(Y_test_orig[:,col_id], Y_test_recon_orig[:,col_id], xerr=2*Y_test_sigma[:,col_id], fmt='None', color='k', alpha=0.4, errorevery=1)
+#     xpoints = ypoints = plt.xlim()
+#     plt.plot(xpoints, ypoints, linestyle='--', color='k',alpha=0.7, scalex=False, scaley=False)
+#     plt.ylabel(r'Predicted ', fontsize='large')
+#     plt.xlabel(r'Measured ', fontsize='large')
+#     plt.title(title)
+#     cbar = plt.colorbar()
+#     cbar.set_label('SNR')
 
         # plt.plot(X_partial_recon_orig[i], c='b', alpha=0.8, label='Predicted mean', lw=0.9)
         # plt.plot(X_train_orig, c='r', linestyle='--', alpha=0.8, label='Ground truth', lw=0.9)
